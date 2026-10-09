@@ -9,29 +9,32 @@ import importlib
 import sys
 
 REQUIRED_PKGS = [
-    "tushare", "yfinance", "pypdf", "pandas", "pyarrow", "requests",
-    # v8 契约层与出片: 缺了不是降级而是硬失败(verdict_block / assemble / build_html 直接退非 0)
-    "yaml", "jsonschema", "markdown",
+    "akshare",
+    "pypdf",
+    "pandas",
+    "pyarrow",
+    "requests",
+    # v8 契约层与出片
+    "yaml",
+    "jsonschema",
+    "markdown",
 ]
 
 
 def check() -> int:
-    for stream in (sys.stdout, sys.stderr):      # Windows 控制台 GBK 下 print emoji 会炸
+    for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, OSError):
             pass
 
-    """Return 0 if env is OK, non-zero otherwise."""
     from . import config
 
-    print("=== company-analysis skill env check ===\n")
+    print("=== company-analysis skill env check (P0 A-share free sources) ===\n")
     ok = True
 
-    # Python
     print(f"Python: {sys.version.split()[0]}")
 
-    # Packages
     print("\nRequired packages:")
     for pkg in REQUIRED_PKGS:
         try:
@@ -42,20 +45,14 @@ def check() -> int:
             print(f"  [MISSING] {pkg}  → pip3 install --user {pkg}")
             ok = False
 
-    # Token
-    print("\nTushare token:")
+    print("\nData vendor tokens:")
+    print("  [OK] Tushare not required (removed in P0)")
     if config.TUSHARE_TOKEN:
-        masked = config.TUSHARE_TOKEN[:4] + "…" + config.TUSHARE_TOKEN[-4:]
-        print(f"  [OK] TUSHARE_TOKEN set (length={len(config.TUSHARE_TOKEN)}, masked={masked})")
-    else:
-        print("  [MISSING] TUSHARE_TOKEN not set")
-        print("  → Add to ~/.zshrc:  export TUSHARE_TOKEN='your_token_here'")
-        print("  → A 股 / 港股 collector 将无法工作（美股 yfinance 不受影响）")
-        ok = False
+        print("  [INFO] TUSHARE_TOKEN is set but ignored — safe to unset")
 
-    # Cache dir
     print(f"\nCache: {config.CACHE_DIR}  (TTL={config.CACHE_TTL_DAYS} days)")
     print(f"Output: {config.OUTPUT_ROOT}")
+    print(f"HTTP timeout: {config.HTTP_TIMEOUT_SEC}s  rate limit: {config.HTTP_RATE_LIMIT_SEC}s")
 
     print("\n" + ("✅ All checks passed." if ok else "⚠️  Fix the [MISSING] items above."))
     return 0 if ok else 1

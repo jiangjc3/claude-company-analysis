@@ -38,10 +38,28 @@ from typing import Any
 import pandas as pd
 
 from . import config
-from .tushare_collector import TushareCollector, normalize_a_code
+from .codes import normalize_a_code
+
+# P0: Tushare-backed moneyflow deferred to P1
+_P0_MONEYFLOW_DEFERRED = True
 
 
-def _latest_n_trade_dates(tc: TushareCollector, n: int = 60) -> list[str]:
+def _deferred_capital_flow_md(target_code: str) -> str:
+    return "\n".join(
+        [
+            f"# 资金流向 / 控盘（P0 降级）— {target_code}",
+            "",
+            "**status=`deferred`** — 原 Tushare moneyflow / hk_hold / margin / 龙虎榜 簇已移除，P1 用免费多源重接。",
+            "",
+            "请勿将本文件解读为「无资金异动」或「无龙虎榜」。",
+            "",
+            "*由 `scripts/capital_flow.py` 生成（P0 stub）*",
+            "",
+        ]
+    )
+
+
+def _latest_n_trade_dates(tc, n: int = 60) -> list[str]:
     """从今天倒推找最近 n 个交易日 (用 trade_cal 接口)."""
     today = dt.date.today()
     start = today - dt.timedelta(days=int(n * 1.7))  # 有周末需要放宽
@@ -111,6 +129,10 @@ def collect_capital_flow(
 ) -> tuple[dict[str, pd.DataFrame], str]:
     """Returns (raw_data_dict, markdown_report)."""
     target_code = normalize_a_code(target_code)
+    if _P0_MONEYFLOW_DEFERRED:
+        return {}, _deferred_capital_flow_md(target_code)
+    from .tushare_collector import TushareCollector  # pragma: no cover — attic path
+
     _CALL_ERRORS.clear()
     _CALL_EMPTY.clear()
     tc = TushareCollector()

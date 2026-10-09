@@ -28,7 +28,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .tushare_collector import normalize_a_code
+from .codes import normalize_a_code
 
 
 # ---------- 基础指标计算 ----------

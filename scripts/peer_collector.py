@@ -34,7 +34,9 @@ from typing import Any
 import pandas as pd
 
 from . import config
-from .tushare_collector import TushareCollector, normalize_a_code
+from .codes import normalize_a_code
+
+_P0_PEER_DEFERRED = True
 
 
 # ---------- 关键指标字段 ----------
@@ -120,6 +122,25 @@ def collect_peers(
     target_code 可以是错的/老的代码;resolve_ticker 会自动尝试 BJ 8↔9 迁移
     或 name_hint 名称匹配 fallback。
     """
+    if _P0_PEER_DEFERRED:
+        code = normalize_a_code(target_code)
+        md = "\n".join(
+            [
+                f"# 同业对标（P0 降级）— {code}",
+                "",
+                "**status=`deferred`** — 自动 peer 宇宙依赖的 Tushare industry 列表已移除。",
+                "P1 将用免费行业成分重接；当前请用 `--peer-codes`（P1）或在 Phase 3 手工点名同业。",
+                "",
+                f"name_hint={name_hint!r} peer_codes={peer_codes!r}",
+                "",
+                "*由 `scripts/peer_collector.py` 生成（P0 stub）*",
+                "",
+            ]
+        )
+        return pd.DataFrame(), md
+
+    from .tushare_collector import TushareCollector  # pragma: no cover
+
     tc = TushareCollector()
     target_code, target_basic = tc.resolve_ticker(target_code, name_hint=name_hint)
     tc._ensure_pro()

@@ -437,9 +437,9 @@ class TestContractLiabilityRows(unittest.TestCase):
 
     def test_collector_requests_the_fields(self):
         """白名单印得出来, 前提是采集时就把列取回来了。"""
-        from scripts.tushare_collector import TushareCollector
+        from scripts.schema_bridge import BALANCE_CORE_TS_FIELDS
 
-        fields = TushareCollector._BALANCE_CORE_FIELDS
+        fields = BALANCE_CORE_TS_FIELDS
         for k in ("contract_liab", "contract_assets", "deferred_inc", "defer_inc_non_cur_liab"):
             self.assertIn(k, fields)
 
@@ -447,9 +447,9 @@ class TestContractLiabilityRows(unittest.TestCase):
         """改了字段白名单, 上一版缓存(少几列)不能还被当成有效结果返回。"""
         import hashlib
 
-        from scripts.tushare_collector import TushareCollector
+        from scripts.schema_bridge import BALANCE_CORE_TS_FIELDS
 
-        fp = hashlib.md5(str(TushareCollector._BALANCE_CORE_FIELDS).encode("utf-8")).hexdigest()[:6]
+        fp = hashlib.md5(str(BALANCE_CORE_TS_FIELDS).encode("utf-8")).hexdigest()[:6]
         stale = hashlib.md5(b"old field list").hexdigest()[:6]
         self.assertNotEqual(fp, stale)
         self.assertEqual(len(fp), 6)
@@ -464,11 +464,11 @@ class TestOtherNonCurrentLiabilities(unittest.TestCase):
     """
 
     def test_fields_are_collected_and_printed(self):
-        from scripts.tushare_collector import TushareCollector
+        from scripts.schema_bridge import BALANCE_CORE_TS_FIELDS
 
         keys = [k for k, _l, _u in data_snapshot.BALANCE_KEY_FIELDS]
         for k in ("oth_cur_liab", "oth_ncl"):
-            self.assertIn(k, TushareCollector._BALANCE_CORE_FIELDS, f"{k} 没进采集白名单")
+            self.assertIn(k, BALANCE_CORE_TS_FIELDS, f"{k} 没进采集白名单")
             self.assertIn(k, keys, f"{k} 没进 §2 资产负债快照")
 
     def test_label_tells_the_reader_to_check_the_note(self):
@@ -479,8 +479,8 @@ class TestOtherNonCurrentLiabilities(unittest.TestCase):
 
     def test_field_list_has_no_duplicates(self):
         """重复字段会让 parquet 落盘直接 ValueError(加 contract_assets 时踩过)。"""
-        from scripts.tushare_collector import TushareCollector
+        from scripts.schema_bridge import BALANCE_CORE_TS_FIELDS
 
-        fields = TushareCollector._BALANCE_CORE_FIELDS.split(",")
+        fields = BALANCE_CORE_TS_FIELDS.split(",")
         dupes = sorted({f for f in fields if fields.count(f) > 1})
         self.assertEqual(dupes, [], f"字段重复: {dupes}")

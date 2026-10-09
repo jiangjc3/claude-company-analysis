@@ -1,6 +1,6 @@
 ---
 name: company-analysis
-description: "分析单个上市公司(A股/美股/港股),生成投资分析报告 — 判断链五节点(质地/状态/赔率/路径/怎么办)+ 首页一眼决断 + 附录A-E。用户输入公司名(如 /company-analysis 实丰文化 002862)即触发。"
+description: "分析单个 A 股上市公司,生成投资分析报告 — 判断链五节点(质地/状态/赔率/路径/怎么办)+ 首页一眼决断 + 附录A-E。免费多源数据采集(无 Tushare)。用户输入公司名(如 /company-analysis 贵州茅台 600519)即触发。"
 argument-hint: <company-name>
 ---
 
@@ -101,7 +101,7 @@ Agent(subagent_type="X", prompt="...", run_in_background=True/False, description
 {PYBIN} -m scripts.check_env
 ```
 
-通过标准:依赖全部 `[OK]` + `TUSHARE_TOKEN set`(A 股/港股必需)。失败 → 给用户修复命令,停止。
+通过标准:依赖全部 `[OK]`(含 `akshare`)。**不再检查 TUSHARE_TOKEN**(P0 已移除)。失败 → 给用户修复命令,停止。本 skill **仅 A 股**。
 
 ---
 
@@ -196,7 +196,7 @@ Phase 1 (data-collector) → Phase 2 (doc-analyst)
 
 | 情况 | 处理 |
 |---|---|
-| Step 0 环境失败 | 停止 + 给修复命令(装依赖 `{PYBIN} -m pip install --user -r scripts/requirements.txt`;设 token:Mac/Linux `export TUSHARE_TOKEN=xxx`, Windows `[Environment]::SetEnvironmentVariable('TUSHARE_TOKEN','xxx','User')`) |
+| Step 0 环境失败 | 停止 + 给修复命令(装依赖 `{PYBIN} -m pip install --user -r scripts/requirements.txt`)；无需 Tushare token |
 | Step 2 `RunExists` | 同日期已有 run:确认重跑意图后清理旧目录,或用次日日期 |
 | Step 2 增量退出码 3(硬规则 1) | 基线不是 v8 结构 → 告知用户后改跑 `--run-type full` 全量 |
 | `triage` 退出码 2 | 缺基线快照(没跑 init_run incremental / R1 未完成)→ 按 review-pipeline.md 顺序补 |
