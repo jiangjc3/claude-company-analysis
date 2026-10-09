@@ -18,7 +18,7 @@ HTTP_RATE_LIMIT_SEC: float = float(os.environ.get("CA_RATE_LIMIT", "0.35"))
 HTTP_MAX_RETRIES: int = int(os.environ.get("CA_HTTP_MAX_RETRIES", "4"))
 HTTP_RETRY_BACKOFF: float = float(os.environ.get("CA_HTTP_RETRY_BACKOFF", "1.5"))
 
-# Legacy names kept so attic/tushare_collector still imports if someone runs it
+# Legacy alias names (ignored by free-source providers; kept for old scripts)
 TUSHARE_RATE_LIMIT_SEC: float = HTTP_RATE_LIMIT_SEC
 TUSHARE_MAX_RETRIES: int = HTTP_MAX_RETRIES
 TUSHARE_RETRY_BACKOFF: float = HTTP_RETRY_BACKOFF

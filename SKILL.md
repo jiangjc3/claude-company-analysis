@@ -122,7 +122,8 @@ Agent(subagent_type="X", prompt="...", run_in_background=True/False, description
 > **产业链对比入口**:用户敲 `--compare {公司}` / 说"和同行比比、同行里买哪个、对比" → 走
 > `phases/compare-pipeline.md` 五段链(C0 查候选三路 → C1 用户确认成组+命名 → C2 上半并排装配 →
 > C3 compare-judge 组内裁决 → C4 出片发布),**不跑任何公司的分析管线**。
-> 全报告制:缺完整报告的成员成组时列出、由用户决定分批补跑;锚自己没报告 → 先跑全量再来。
+> **仅 A 股成员**(.SH/.SZ/.BJ);港美 ticker 不得进候选/成组。全报告制:缺完整报告的成员成组时列出、
+> 由用户决定分批补跑;锚自己没报告 → 先跑全量再来。
 
 ---
 

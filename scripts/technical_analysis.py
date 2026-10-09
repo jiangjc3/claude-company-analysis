@@ -15,7 +15,7 @@ Usage:
     python3 -m scripts.technical_analysis 600745.SH \\
         --out output/闻泰科技/technical_analysis.md
 
-前置: Phase 1 Step 1 tushare_collector 已跑过, daily.parquet 存在.
+前置: Phase 1 `a_share_collector` 已跑过, daily.parquet 存在.
 """
 from __future__ import annotations
 import sys
@@ -306,7 +306,7 @@ def _format_markdown(df: pd.DataFrame, s: dict) -> str:
         "---",
         "",
         f"*由 `scripts/technical_analysis.py` 自动生成*",
-        f"*数据源: Phase 1 `daily.parquet` (Tushare 日线, 近 3 年)*",
+        f"*数据源: Phase 1 `daily.parquet` (免费多源日线, 近 3 年)*",
         f"*供 Phase 3 §五 估值、赔率与定价充分度 (5.6) 的 `### 技术面位置` 子节消费*",
     ])
 

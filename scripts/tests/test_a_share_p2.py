@@ -197,11 +197,11 @@ class TestProductDocsP2(unittest.TestCase):
         self.assertIn("仅 A 股", skill)
         self.assertNotIn("市场(A股/美股/港股)", skill)
         self.assertTrue(
-            "v8.10-p2" in readme or "v8.10--p2" in readme,
-            "README should badge/mention p2",
+            any(tag in readme for tag in ("v8.10-p3", "v8.10--p3", "v8.10-p2", "v8.10--p2")),
+            "README should badge/mention p2+",
         )
         self.assertIn("仅支持 A 股", readme)
-        self.assertIn("P0–P2", readme)
+        self.assertTrue("P0–P3" in readme or "P0–P2" in readme)
         # install messaging
         install = (root / "install.sh").read_text(encoding="utf-8")
         self.assertIn("仅 A 股", install)

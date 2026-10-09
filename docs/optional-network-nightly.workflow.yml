@@ -1,0 +1,61 @@
+# Optional live free-source smoke (akshare / sina / cninfo).
+# Not required for merge: default CI is tests.yml (offline unit tests).
+# Enable on a schedule or run manually via workflow_dispatch.
+#
+# Failures here are often upstream flakiness / rate limits — treat as signal,
+# not a hard release gate. Local equivalent:
+#   CA_NETWORK_TESTS=1 python -m unittest scripts.tests.test_a_share_p0 scripts.tests.test_a_share_p1
+
+name: network-nightly
+
+on:
+  schedule:
+    # 16:30 UTC ≈ early China morning; skip weekends to reduce scrape load
+    - cron: "30 16 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: network-nightly
+  cancel-in-progress: true
+
+jobs:
+  free-source-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r scripts/requirements.txt
+
+      - name: Live A-share collector smoke (CA_NETWORK_TESTS=1)
+        env:
+          PYTHONUTF8: "1"
+          CA_NETWORK_TESTS: "1"
+        run: |
+          set -o pipefail
+          code=0
+          python -m unittest \
+            scripts.tests.test_a_share_p0.TestNetworkSmoke \
+            scripts.tests.test_a_share_p1.TestNetworkP1Smoke \
+            -v 2>&1 | tee network-output.txt || code=$?
+          {
+            echo "### Network nightly smoke"
+            echo ''
+            echo '```'
+            tail -n 40 network-output.txt
+            echo '```'
+            if [ "$code" -ne 0 ]; then
+              echo ''
+              echo "> Non-zero exit ($code). Often upstream rate-limit / layout drift — not a merge blocker."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"

@@ -133,7 +133,7 @@ def fetch_stk_managers(ts_code: str) -> ClusterResult:
             primary="none",
             status=SourceStatus.DEFERRED,
             rows=0,
-            note="P1: no per-stock free 董监高名单 API; use 年报「董监高」PDF (Phase 2). "
+            note="P3 gap: no per-stock free 董监高名单 API; use 年报「董监高」PDF (Phase 2). "
             "Do not invent managers from silence.",
         ),
     )
@@ -142,7 +142,7 @@ def fetch_stk_managers(ts_code: str) -> ClusterResult:
 def fetch_stk_rewards(ts_code: str) -> ClusterResult:
     r = deferred(
         "stk_rewards",
-        "P1: structured 薪酬 often missing on free sources; Phase 2 PDF 董监高薪酬. "
+        "P3 gap: structured 薪酬 often missing on free sources; Phase 2 PDF 董监高薪酬. "
         "Do not treat empty as「无薪酬披露」.",
     )
     r.df = pd.DataFrame(columns=["ts_code", "name", "title", "reward", "hold_vol"])

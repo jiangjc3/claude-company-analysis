@@ -5,11 +5,11 @@
 它会自己去拉财报数据、下载并精读年报原文、跑完会计审计框架，然后把结论收敛成一张五行决断卡：
 **是不是好公司 / 在变好吗 / 贵不贵 / 扛得住吗 / 现在该怎么办**。
 
-**本 fork（P0–P2）仅支持 A 股**，数据采集为 **akshare / 新浪 / 巨潮等免费多源**，**不需要 Tushare token**。P2 裁剪 SKILL/agents 产品措辞、硬化 `--review` 披露日历同步，并用东山 fixture 贯通装配 → `lint_v8` → HTML。报告全程说人话，每个关键数字都能回到出处。
+**本 fork（P0–P3）仅支持 A 股**，数据采集为 **akshare / 新浪 / 巨潮等免费多源**，**不需要 Tushare token**。P3 硬化 `--compare` 仅 A 股成员、双 reviewer「多源缺口」检查、可选实网 CI 模板，并删除 attic 旧采集器。报告全程说人话，每个关键数字都能回到出处。数据源与合规见 [`docs/data-sources-compliance.md`](./docs/data-sources-compliance.md)。
 
 <p align="center">
   <a href="https://github.com/jiangjc3/claude-company-analysis/actions/workflows/tests.yml"><img src="https://github.com/jiangjc3/claude-company-analysis/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
-  <img src="https://img.shields.io/badge/version-v8.10--p2-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-v8.10--p3-blue" alt="version">
   <img src="https://img.shields.io/badge/markets-A%E8%82%A1%20only-green" alt="markets">
   <img src="https://img.shields.io/badge/data-akshare%20%7C%20sina%20%7C%20cninfo-orange" alt="data">
   <img src="https://img.shields.io/badge/gate-lint%2018%20%2B%202%20reviewer-red" alt="gate">
@@ -238,8 +238,9 @@ Phase 6  质量环    lint_v8 18 条 → reviewer-logic ∥ reviewer-delivery �
 | [`references/`](./references/) | [判断链手册](./references/judgment-chain.md) + 四份节点手册 + HTML 规范 |
 | [`phases/`](./phases/) | 各阶段执行细则（判断链写作、质量环发布、增量复查、产业链对比） |
 | [`scripts/`](./scripts/) | Python 数据层：`a_share_collector` + `providers/` 多源采集 / 审计 / 装配 / schema / lint / 出片 |
-| [`attic/`](./attic/) | 已移除的 Tushare / 美股 / 港股采集器（对照用，不参与运行） |
-| [`scripts/tests/`](./scripts/tests/) | 524 个单元测试 |
+| [`docs/`](./docs/) | 用户短页（[数据源与合规](./docs/data-sources-compliance.md)） |
+| [`CONTRIBUTING.md`](./CONTRIBUTING.md) | 贡献指南 |
+| [`scripts/tests/`](./scripts/tests/) | 单元测试（默认离线；可选 `CA_NETWORK_TESTS=1`） |
 | [`assets/html/`](./assets/html/) | 报告与对比页的 HTML / CSS 模板 |
 | [`.scratch/`](./.scratch/) | v8 重构期的设计留档与实现票（为什么这么改，都记在里面）——不参与运行 |
 
@@ -251,6 +252,7 @@ Phase 6  质量环    lint_v8 18 条 → reviewer-logic ∥ reviewer-delivery �
 
 | 版本 | 关键变化 |
 |---|---|
+| **v8.10-p3** | `--compare` 仅 A 股；双 reviewer 多源缺口检查；可选实网 CI 模板；合规短页；attic 删除 |
 | **v8.10-p2** | Agents/SKILL 仅 A 股措辞；`--review` C14 披露日历同步；东山 fixture → md+lint+HTML |
 | **v8.10-p1** | 治理/资金流/peer 免费源 + provenance 空表语义 |
 | **v8.10-p0** | 去 Tushare；`a_share_collector` + providers 门面 |
