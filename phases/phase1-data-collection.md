@@ -55,11 +55,7 @@
 {PYBIN} -m scripts.check_env
 ```
 
-**通过标准**: 所有依赖 `[OK]`、`TUSHARE_TOKEN set`。
-
-若 `TUSHARE_TOKEN` 未设置且 `{market} ∈ {A股, 港股}`：
-- 报告给用户："请先在 shell 配置(Mac: ~/.zshrc;Windows: 用户环境变量) 设置 TUSHARE_TOKEN，然后 source。A 股/港股分析需要此 token。"
-- 停止执行，等用户修复。
+**通过标准**: 所有依赖 `[OK]`(含 `akshare`)。**P0 起不再需要 TUSHARE_TOKEN**；本 skill **仅 A 股**。
 
 ---
 
@@ -68,7 +64,7 @@
 ### 1.1 A 股路径
 
 ```
-{PYBIN} -m scripts.tushare_collector {ticker} --name {company}
+{PYBIN} -m scripts.a_share_collector {ticker} --name {company}
 ```
 
 **北交所代码自动迁移（v4.6 起）**：北交所 2025 年把许多股票从 8XXXXX 迁至 9XXXXX。如果用户输入旧代码（如 `832522.BJ`），`tushare_collector` 内部 `resolve_ticker` 会自动尝试 9-prefix（→ `920522.BJ`）并打印迁移提示。如果代码完全不识别，还可加 `--name 公司名` 用名称作为最后 fallback。无须手动转换。

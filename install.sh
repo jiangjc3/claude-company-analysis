@@ -110,9 +110,13 @@ for py in \
     verdict_block \
     manifest \
     data_cache \
+    codes \
+    a_share_collector \
+    schema_bridge \
     tushare_collector \
     us_collector \
     hk_collector \
+    legacy_quote \
     pdf_reader \
     data_snapshot \
     derived_metrics \
@@ -120,7 +124,6 @@ for py in \
     peer_collector \
     capital_flow \
     technical_analysis \
-    legacy_quote \
     report_parser \
     monitor \
     node_graph \
@@ -139,6 +142,14 @@ for py in \
 done
 curl -fsSL "$REPO_URL/scripts/requirements.txt" -o "$SKILL_DIR/scripts/requirements.txt"
 curl -fsSL "$REPO_URL/scripts/README.md" -o "$SKILL_DIR/scripts/README.md"
+# P0 providers / merge
+mkdir -p "$SKILL_DIR/scripts/providers" "$SKILL_DIR/scripts/merge"
+for py in base sina_quote akshare_fundamentals cninfo __init__; do
+  curl -fsSL "$REPO_URL/scripts/providers/${py}.py" -o "$SKILL_DIR/scripts/providers/${py}.py" || true
+done
+for py in rules __init__; do
+  curl -fsSL "$REPO_URL/scripts/merge/${py}.py" -o "$SKILL_DIR/scripts/merge/${py}.py" || true
+done
 # v8 契约层 schema(节点×4 + decision + assembly + appendix-d + manifest + triage + 对比×4 + 变化基线 + common)
 mkdir -p "$SKILL_DIR/scripts/schemas"
 for schema in \
@@ -183,10 +194,11 @@ SCHEMA_COUNT=$(find "$SKILL_DIR/scripts/schemas" -name "*.schema.json" 2>/dev/nu
 #   assets +compare-v8.html → 6; scripts +triage(票09) +derivation(票11) +compare(票10) → 33
 #   —— 前两个此前只进了 install.ps1(整目录拷), install.sh 的逐文件清单漏了, 一并补上)
 
-if [ "$PHASE_COUNT" -eq "6" ] && [ "$AGENT_COUNT" -eq "10" ] && [ "$REF_COUNT" -eq "9" ] && [ "$SCRIPT_COUNT" -eq "33" ] && [ "$ASSETS_COUNT" -eq "6" ] && [ "$SCHEMA_COUNT" -eq "15" ]; then
+# P0 adds providers/merge/codes/a_share_collector/schema_bridge — count floored, not exact-matched
+if [ "$PHASE_COUNT" -eq "6" ] && [ "$AGENT_COUNT" -eq "10" ] && [ "$REF_COUNT" -eq "9" ] && [ "$SCRIPT_COUNT" -ge "33" ] && [ "$ASSETS_COUNT" -eq "6" ] && [ "$SCHEMA_COUNT" -eq "15" ]; then
     echo ""
     echo "============================================"
-    echo "  ✅ 安装成功！(v8.5)"
+    echo "  ✅ 安装成功！(v8.10-p0 A-share free sources)"
     echo "============================================"
     echo ""
     echo "  协调器:  SKILL.md"
@@ -199,32 +211,23 @@ if [ "$PHASE_COUNT" -eq "6" ] && [ "$AGENT_COUNT" -eq "10" ] && [ "$REF_COUNT" -
     echo "  输出目录: ~/投资报告/"
     echo ""
     echo "============================================"
-    echo "  下一步（必做，否则 A 股/港股分析无法工作）"
+    echo "  下一步（P0: 仅 A 股，无需 Tushare）"
     echo "============================================"
     echo ""
     echo "  1. 安装 Python 依赖:"
-    echo "     cd $SKILL_DIR/scripts && pip3 install --user -r requirements.txt"
+    echo "     pip3 install --user -r $SKILL_DIR/scripts/requirements.txt"
     echo ""
-    echo "  2. 配置 Tushare Token（注册 https://tushare.pro/register）:"
-    echo "     echo 'export TUSHARE_TOKEN=\"your_token_here\"' >> ~/.zshrc"
-    echo "     source ~/.zshrc"
-    echo ""
-    echo "  3. 环境自检:"
+    echo "  2. 环境自检:"
     echo "     cd $SKILL_DIR && python3 -m scripts.check_env"
     echo ""
-    echo "  4. 重启 Claude Code，然后使用："
+    echo "  3. 重启 Claude Code，然后使用："
     echo ""
-    echo "     /company-analysis <公司名称>"
-    echo ""
-    echo "示例："
-    echo "  /company-analysis 贵州茅台 600519.SH     # A 股"
-    echo "  /company-analysis Apple AAPL             # 美股"
-    echo "  /company-analysis 腾讯控股 0700.HK       # 港股"
+    echo "     /company-analysis 贵州茅台 600519"
     echo ""
 else
     echo ""
     echo "❌ 错误：安装不完整"
-    echo "  预期(v8.5): phases=6 agents=10 refs=9 scripts=33 assets=6 schemas=15"
+    echo "  预期(P0): phases=6 agents=10 refs=9 scripts>=33 assets=6 schemas=15"
     echo "  实际:       phases=$PHASE_COUNT agents=$AGENT_COUNT refs=$REF_COUNT scripts=$SCRIPT_COUNT assets=$ASSETS_COUNT schemas=$SCHEMA_COUNT"
     exit 1
 fi

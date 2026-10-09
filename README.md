@@ -5,13 +5,13 @@
 它会自己去拉财报数据、下载并精读年报原文、跑完会计审计框架，然后把结论收敛成一张五行决断卡：
 **是不是好公司 / 在变好吗 / 贵不贵 / 扛得住吗 / 现在该怎么办**。
 
-支持 A 股 / 美股 / 港股。报告全程说人话，每个关键数字都能回到出处。
+**本分支（P0 改造）仅支持 A 股**，数据采集改为 **akshare / 新浪 / 巨潮等免费多源**，**不再需要 Tushare token**。报告全程说人话，每个关键数字都能回到出处。
 
 <p align="center">
   <a href="https://github.com/leafpaper/claude-company-analysis/actions/workflows/tests.yml"><img src="https://github.com/leafpaper/claude-company-analysis/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
-  <img src="https://img.shields.io/badge/version-v8.10-blue" alt="version">
-  <img src="https://img.shields.io/badge/markets-A%E8%82%A1%20%7C%20%E7%BE%8E%E8%82%A1%20%7C%20%E6%B8%AF%E8%82%A1-green" alt="markets">
-  <img src="https://img.shields.io/badge/audit-11%20frameworks-orange" alt="frameworks">
+  <img src="https://img.shields.io/badge/version-v8.10--p0-blue" alt="version">
+  <img src="https://img.shields.io/badge/markets-A%E8%82%A1%20only-green" alt="markets">
+  <img src="https://img.shields.io/badge/data-akshare%20%7C%20sina%20%7C%20cninfo-orange" alt="data">
   <img src="https://img.shields.io/badge/gate-lint%2018%20%2B%202%20reviewer-red" alt="gate">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="license">
 </p>
@@ -140,9 +140,10 @@
 |---|---|
 | **Claude Code** | 这是一个 Claude Code 的 skill，不是网页版 Claude 或独立命令行程序。装好后在 Claude Code 对话里用 |
 | **Python 3.11+** | 数据层跑在本地 Python，不占用模型上下文 |
-| **Tushare token** | 分析 A 股 / 港股必需；只分析美股可以不配 |
-| **一次全量要多久** | 本机实测约 2 小时（采集 5 分钟 → 精读 20 分钟 → 判断链三波 25 分钟 → 质量环每轮约 10 分钟，最多三轮）。`--review` 约三分之一 |
-| **要花多少 token** | 主要成本在 10 个 sub-agent 的并行写作与三轮评审，量级在百万 token。想省就少跑几轮质量环——但那正是这套东西值钱的地方 |
+| **数据源** | **免费多源**（akshare / 新浪 K 线 / 巨潮公告与 PDF）；**不需要 Tushare token** |
+| **市场** | **仅 A 股**（美股/港股路径已移除） |
+| **一次全量要多久** | 上游实测约 2 小时量级；采集段视免费源限速可能更长 |
+| **要花多少 token** | 主要成本在 sub-agent 写作与评审（模型侧），不是数据 API 账单 |
 
 ### 1. 装 skill
 
@@ -164,37 +165,25 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 pip3 install --user -r ~/.claude/skills/company-analysis/scripts/requirements.txt
 ```
 
-依赖：`tushare yfinance pypdf pandas pyarrow requests markdown pyyaml jsonschema`
+依赖：`akshare pypdf pandas pyarrow requests markdown pyyaml jsonschema`（见 `scripts/requirements.txt`）。
 
-### 3. 配 Tushare token（分析 A 股 / 港股必需）
-
-去 [tushare.pro](https://tushare.pro/register) 注册拿 token。学生认证可拿 5000+ 免费积分；
-或充 2000 积分（约 ¥200）解锁全部核心财报接口。
-
-```bash
-# Mac / Linux
-echo 'export TUSHARE_TOKEN="your_token"' >> ~/.zshrc && source ~/.zshrc
-```
-```powershell
-# Windows,重开终端生效
-[Environment]::SetEnvironmentVariable('TUSHARE_TOKEN','your_token','User')
-```
-
-> token 走环境变量，别提交进 git。[`.env.sample`](./.env.sample) 是模板。
-
-### 4. 自检并开跑
+### 3. 自检并开跑（无需 Tushare）
 
 ```bash
 cd ~/.claude/skills/company-analysis && python3 -m scripts.check_env
+# 采集烟测（可选）
+python3 -m scripts.a_share_collector 600519.SH --name 贵州茅台
 ```
 
 全部 `[OK]` 就可以在 Claude Code 对话里跑了：
 
 ```
-/company-analysis 贵州茅台              # 全量分析，不给代码也行
+/company-analysis 贵州茅台 600519       # 全量分析（A 股）
 /company-analysis 贵州茅台 --review     # 财报季增量复查
-/company-analysis 东山精密 --compare    # 同行对比
+/company-analysis 东山精密 --compare    # 同行对比（成员须为 A 股）
 ```
+
+可选 HTTP 限速 / 缓存见 [`.env.sample`](./.env.sample)。
 
 自然语言同样触发：「复查一下茅台」「和同行比比」。
 
@@ -248,7 +237,8 @@ Phase 6  质量环    lint_v8 18 条 → reviewer-logic ∥ reviewer-delivery �
 | [`agents/`](./agents/) | 10 个 sub-agent 定义：采集 / 精读 / 四个节点写手 / 决策 / 两个 reviewer / 对比裁决 |
 | [`references/`](./references/) | [判断链手册](./references/judgment-chain.md) + 四份节点手册 + HTML 规范 |
 | [`phases/`](./phases/) | 各阶段执行细则（判断链写作、质量环发布、增量复查、产业链对比） |
-| [`scripts/`](./scripts/) | 33 个 Python 脚本：数据采集 / 审计 / 装配 / 15 份 JSON Schema / lint / 出片 |
+| [`scripts/`](./scripts/) | Python 数据层：`a_share_collector` + `providers/` 多源采集 / 审计 / 装配 / schema / lint / 出片 |
+| [`attic/`](./attic/) | 已移除的 Tushare / 美股 / 港股采集器（对照用，不参与运行） |
 | [`scripts/tests/`](./scripts/tests/) | 524 个单元测试 |
 | [`assets/html/`](./assets/html/) | 报告与对比页的 HTML / CSS 模板 |
 | [`.scratch/`](./.scratch/) | v8 重构期的设计留档与实现票（为什么这么改，都记在里面）——不参与运行 |
@@ -280,8 +270,8 @@ Phase 6  质量环    lint_v8 18 条 → reviewer-logic ∥ reviewer-delivery �
 
 **据此做出的任何投资决策，风险由你自己承担。** 真要下注之前，请自己回原始公告核对一遍。
 
-数据来源：[Tushare Pro](https://tushare.pro)（A 股 / 港股，需自备 token 并遵守其服务条款）、
-[yfinance](https://github.com/ranaroussi/yfinance)（美股）、交易所公开披露的定期报告 PDF。
+数据来源（P0）：[AkShare](https://github.com/akfamily/akshare)（东财等公开接口封装）、新浪财经 K 线、
+巨潮资讯 / 交易所公开披露 PDF 与公告；遵守各站点服务条款。研究用途，非再分发行情馈送。
 
 ---
 

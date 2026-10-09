@@ -4,6 +4,22 @@
 
 ---
 
+## [v8.10-p0] — 2026-10-09 — A 股免费多源采集（去 Tushare）
+
+**Changed**
+
+- 数据采集改为 `scripts.a_share_collector` + `providers/`（akshare / 新浪 K 线 / 公告），`schema_bridge` 映射到原 Tushare 形 parquet 列，下游审计/装配少改。
+- `check_env` **不再要求** `TUSHARE_TOKEN`；产品范围 **仅 A 股**。
+- 核心簇强制 `_provenance.json` + `_core_gate.json`，禁止把 `source_failed` 当成「无此事」。
+- `us_collector` / `hk_collector` / 原 `tushare_collector` 移入 `attic/` 或改为 stub；`capital_flow` / `peer_collector` 在 P0 输出 `deferred` 降级稿（P1 重接）。
+
+**Added**
+
+- `scripts/providers/*`、`scripts/merge/rules.py`、`scripts/schema_bridge.py`、`scripts/codes.py`
+- 单测 `scripts/tests/test_a_share_p0.py` + EM 样例 fixture；可选 `CA_NETWORK_TESTS=1` 茅台烟测
+
+---
+
 ## [v8.10] — 2026-09-16 — 金山办公(688111)实跑打出来的四个洞
 
 > 这一版全部来自一次真分析:跑轻资产样本 金山办公 时, Phase 1 一次性暴露四处
