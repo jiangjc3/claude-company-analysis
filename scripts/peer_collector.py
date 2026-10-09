@@ -36,8 +36,6 @@ import pandas as pd
 from . import config
 from .codes import normalize_a_code
 
-_P0_PEER_DEFERRED = True
-
 
 # ---------- 关键指标字段 ----------
 # 对比维度: 规模 (市值) + 盈利 (ROE/毛利/净利) + 杠杆 + 估值 (PE/PB/PS)
@@ -59,23 +57,17 @@ COMPARE_FIELDS = [
 ]
 
 
-# ---------- 辅助: 最近交易日 ----------
+def _latest_trade_date(lookback: int = 10) -> str:
+    """最近交易日 YYYYMMDD (sina 日历; 失败则今天)."""
+    try:
+        from .providers.eastmoney_flow import fetch_trade_cal
 
-def _latest_trade_date(tc: TushareCollector, lookback: int = 10) -> str:
-    """从今天倒推 lookback 天, 找最近有行情的交易日 YYYYMMDD."""
-    today = dt.date.today()
-    for i in range(lookback):
-        d = today - dt.timedelta(days=i)
-        ds = d.strftime("%Y%m%d")
-        # 用 daily_basic 小探一下 (任意股票作探针)
-        try:
-            df = tc._pro.daily_basic(ts_code="600519.SH", trade_date=ds)
-            if not df.empty:
-                return ds
-        except Exception:
-            continue
-    raise RuntimeError(f"未找到近 {lookback} 日的交易日数据")
-
+        dates = fetch_trade_cal(lookback)
+        if dates:
+            return dates[0]
+    except Exception:
+        pass
+    return dt.date.today().strftime("%Y%m%d")
 
 # ---------- 核心采集函数 ----------
 
@@ -117,79 +109,122 @@ def collect_peers(
     name_hint: str | None = None,
     peer_codes: list[str] | None = None,
 ) -> tuple[pd.DataFrame, str]:
-    """Returns (peers_df, markdown_report).
+    """Returns (peers_df, markdown_report). P1: free spot/board universe + akshare fina."""
+    import math
 
-    target_code 可以是错的/老的代码;resolve_ticker 会自动尝试 BJ 8↔9 迁移
-    或 name_hint 名称匹配 fallback。
-    """
-    if _P0_PEER_DEFERRED:
-        code = normalize_a_code(target_code)
+    from .providers import akshare_fundamentals as akf
+    from .providers import peer_universe as pu
+
+    target_code = normalize_a_code(target_code)
+    basic = akf.fetch_stock_basic(target_code, name_hint=name_hint)
+    target_name = ""
+    if not basic.df.empty:
+        target_name = str(basic.df.iloc[0].get("name") or name_hint or target_code)
+    else:
+        target_name = name_hint or target_code
+
+    if peer_codes:
+        uni = pu.fetch_stock_universe(peer_codes=peer_codes, target_code=target_code)
+        industry = "(manual)"
+    else:
+        uni = pu.fetch_stock_universe()
+        if uni.df.empty:
+            md = "\n".join(
+                [
+                    f"# 同业对标（降级）— {target_code}",
+                    "",
+                    f"**status=`{uni.provenance.status.value}`** — peer 宇宙拉取失败: {uni.provenance.error or uni.provenance.note}",
+                    "请用 `--peer-codes` 指定同业后重试，或 Phase 3 手工点名。",
+                    "",
+                    "*由 `scripts/peer_collector.py` 生成（P1）*",
+                    "",
+                ]
+            )
+            return pd.DataFrame(), md
+        industry = ""
+
+    if uni.df.empty:
         md = "\n".join(
             [
-                f"# 同业对标（P0 降级）— {code}",
+                f"# 同业对标（降级）— {target_code}",
                 "",
-                "**status=`deferred`** — 自动 peer 宇宙依赖的 Tushare industry 列表已移除。",
-                "P1 将用免费行业成分重接；当前请用 `--peer-codes`（P1）或在 Phase 3 手工点名同业。",
+                f"**status=`{uni.provenance.status.value}`** — peer 宇宙拉取失败: {uni.provenance.error or uni.provenance.note}",
+                "请用 `--peer-codes` 指定同业后重试，或 Phase 3 手工点名。",
                 "",
-                f"name_hint={name_hint!r} peer_codes={peer_codes!r}",
-                "",
-                "*由 `scripts/peer_collector.py` 生成（P0 stub）*",
+                "*由 `scripts/peer_collector.py` 生成（P1）*",
                 "",
             ]
         )
         return pd.DataFrame(), md
 
-    from .tushare_collector import TushareCollector  # pragma: no cover
+    universe = uni.df
+    if not peer_codes:
+        universe, industry = pu.enrich_industry_from_board(universe, target_code)
+        if not industry:
+            if not basic.df.empty and basic.df.iloc[0].get("industry"):
+                industry = str(basic.df.iloc[0]["industry"])
 
-    tc = TushareCollector()
-    target_code, target_basic = tc.resolve_ticker(target_code, name_hint=name_hint)
-    tc._ensure_pro()
-    pro = tc._pro
-
-    # 1. 查目标公司行业 (target_basic 已由 resolve_ticker 取回)
-    industry = target_basic.iloc[0].get("industry")
-    target_name = target_basic.iloc[0].get("name")
-    if not industry or pd.isna(industry):
-        raise RuntimeError(f"{target_code} 行业字段为空, 无法做 peer 采集")
-
-    # 2. 拉全市场 stock_basic 后本地过滤 (Tushare industry 参数可能不严格过滤)
-    all_stocks = pro.stock_basic(
-        exchange="",
-        list_status="L",
-        fields="ts_code,symbol,name,industry,list_date,market",
-    )
-    all_peers, manual_peers, missing_codes = _peer_universe(
-        all_stocks, target_code, industry, peer_codes
+    all_peers, manual_peers, missing_codes, meta = pu.build_peer_pool(
+        universe, target_code, industry, peer_codes
     )
     if missing_codes:
-        print(f"[WARN] 指定的同业代码在 stock_basic 里找不到, 已跳过: {missing_codes}")
+        print(f"[WARN] 指定的同业代码在 universe 里找不到, 已跳过: {missing_codes}")
+
     if len(all_peers) < 2:
-        who = "指定的同业" if manual_peers else f"行业 '{industry}'"
-        raise RuntimeError(f"{who} 可用公司不足 2 家, 无法做 peer 对比")
+        md = "\n".join(
+            [
+                f"# 同业对标（降级）— {target_name} ({target_code})",
+                "",
+                f"**status=`partial`** — {meta.get('note') or 'peer pool < 2'}",
+                "",
+                "自动行业成分不可用或过窄时**不要假装有同业**。请用:",
+                "",
+                "```",
+                f"python3 -m scripts.peer_collector {target_code} --peer-codes 600xxx.SH,300yyy.SZ",
+                "```",
+                "",
+                f"name_hint={name_hint!r} industry={industry!r}",
+                "",
+                "*由 `scripts/peer_collector.py` 生成（P1）*",
+                "",
+            ]
+        )
+        return pd.DataFrame(), md
 
-    # 3. 拉最新日的 daily_basic 全市场, 得市值/估值
-    td = trade_date or _latest_trade_date(tc)
-    basic_day = pro.daily_basic(
-        trade_date=td,
-        fields="ts_code,close,total_mv,pe,pe_ttm,pb,ps,ps_ttm,dv_ratio,turnover_rate",
-    )
-    merged = all_peers.merge(basic_day, on="ts_code", how="left")
-    merged = merged.dropna(subset=["total_mv"])
-    # 再次保险: 确保 industry 严格相同(人工指定同业时不筛 —— 真同业常常不在同一个行业分类里)
+    td = trade_date or _latest_trade_date()
+    merged = all_peers.copy()
     if not manual_peers:
-        merged = merged[merged["industry"] == industry]
-    # total_mv tushare 单位是万元 → 转亿
+        merged = merged.dropna(subset=["total_mv"])
+    else:
+        # manual peers: keep names even if valuation spot failed (placeholder mv ok)
+        if "total_mv" not in merged.columns:
+            merged["total_mv"] = None
+        merged["total_mv"] = pd.to_numeric(merged["total_mv"], errors="coerce").fillna(1.0)
+    if not manual_peers and industry and industry != "(manual)":
+        merged = merged[merged["industry"] == industry]    # total_mv 万元 → 亿
     merged["total_mv_yi"] = merged["total_mv"] / 10000
+    merged["ps_ttm"] = None
+    merged["dv_ratio"] = None
 
-    # 4. 按市值相近度排序 (不做绝对差, 用对数距离更公平)
-    target_mv = merged.loc[merged["ts_code"] == target_code, "total_mv"].iloc[0]
-    import math
+    if target_code not in set(merged["ts_code"].astype(str)):
+        md = "\n".join(
+            [
+                f"# 同业对标（降级）— {target_name} ({target_code})",
+                "",
+                "**status=`partial`** — 目标公司不在合并后的 peer 池（缺市值？）",
+                "",
+                "*由 `scripts/peer_collector.py` 生成（P1）*",
+                "",
+            ]
+        )
+        return pd.DataFrame(), md
+
+    target_mv = float(merged.loc[merged["ts_code"] == target_code, "total_mv"].iloc[0])
     merged["mv_log_dist"] = merged["total_mv"].apply(
-        lambda x: abs(math.log(x + 1) - math.log(target_mv + 1))
+        lambda x: abs(math.log(float(x) + 1) - math.log(target_mv + 1))
     )
     peers_sorted = merged.sort_values("mv_log_dist")
 
-    # 5. 取 target + 最接近的 n 家
     selected_codes: list[str] = [target_code]
     for code in peers_sorted["ts_code"]:
         if code == target_code:
@@ -198,25 +233,26 @@ def collect_peers(
         if len(selected_codes) >= n + 1:
             break
     if manual_peers:
-        selected_codes = list(peers_sorted["ts_code"])      # 人工指定的一家都不能少
+        selected_codes = list(peers_sorted["ts_code"])
     selected = peers_sorted[peers_sorted["ts_code"].isin(selected_codes)].copy()
 
-    # 6. 批量拉每家 fina_indicator (最新一期) + income (计算 YoY)
     rows = []
     for _, prow in selected.iterrows():
         code = prow["ts_code"]
         try:
-            fi = tc.fina_indicator(code, start_year=dt.date.today().year - 2)
-            inc = tc.income(code, start_year=dt.date.today().year - 2)
+            fi_res = akf.fetch_fina_indicator(code)
+            inc_res = akf.fetch_income(code)
+            fi = fi_res.df
+            inc = inc_res.df
+            if not fi.empty and "end_date" in fi.columns:
+                fi = fi[fi["end_date"] >= f"{dt.date.today().year - 2}0101"]
+            if not inc.empty and "end_date" in inc.columns:
+                inc = inc[inc["end_date"] >= f"{dt.date.today().year - 2}0101"]
         except Exception as e:
             print(f"[WARN] {code} 财务数据采集失败: {e}")
             fi = pd.DataFrame()
             inc = pd.DataFrame()
 
-        # ⚠️ 取「最新期」必须先按 end_date 排序:Tushare 的 fina_indicator **最新在前**,
-        # 直接 `iloc[-1]` 拿到的是**最旧**那期(start_year=今年-2 时就是两年前的一季报)。
-        # 实测中际旭创因此取到 20240331 的 ROE 6.74 / 毛利 32.76, 而真实最新期是 44.16% / 46.25%,
-        # 附录B 与正文当场打架、①质地的 peer 分位五个指标只能全部留空(v8.4 实战暴露)。
         latest_fi = pd.Series(dtype=object)
         fi_period = None
         if not fi.empty and "end_date" in fi.columns:
@@ -224,14 +260,13 @@ def collect_peers(
             latest_fi = fi_sorted.iloc[0]
             fi_period = str(latest_fi.get("end_date") or "") or None
         elif not fi.empty:
-            latest_fi = fi.iloc[0]                    # 没有 end_date 列时不猜, 至少别取最后一行
-        # 营收 YoY: latest 年 vs 上一年
+            latest_fi = fi.iloc[0]
+
         rev_yoy = None
-        if len(inc) >= 2:
-            # 按 end_date 取最近两期同期
+        if len(inc) >= 2 and "end_date" in inc.columns and "revenue" in inc.columns:
             inc_sorted = inc.sort_values("end_date", ascending=False)
-            latest_period = inc_sorted.iloc[0]["end_date"][-4:]  # MMDD
-            prev = inc_sorted[inc_sorted["end_date"].str.endswith(latest_period)].head(2)
+            latest_period = str(inc_sorted.iloc[0]["end_date"])[-4:]
+            prev = inc_sorted[inc_sorted["end_date"].astype(str).str.endswith(latest_period)].head(2)
             if len(prev) == 2:
                 try:
                     rev_now = float(prev.iloc[0]["revenue"])
@@ -244,30 +279,27 @@ def collect_peers(
         rows.append({
             "ts_code": code,
             "name": prow["name"],
-            "industry": prow["industry"],
+            "industry": prow.get("industry") or industry,
             "total_mv_yi": prow.get("total_mv_yi"),
             "pe_ttm": prow.get("pe_ttm"),
             "pb": prow.get("pb"),
             "ps_ttm": prow.get("ps_ttm"),
             "dv_ratio": prow.get("dv_ratio"),
-            "fi_period": fi_period,               # 该行财务数据的期别 —— 各家不同期时读者要看得见
-            "roe_latest": _sf(latest_fi.get("roe")),
-            "grossprofit_margin": _sf(latest_fi.get("grossprofit_margin")),
-            "netprofit_margin": _sf(latest_fi.get("netprofit_margin")),
-            "debt_to_assets": _sf(latest_fi.get("debt_to_assets")),
+            "fi_period": fi_period,
+            "roe_latest": _sf(latest_fi.get("roe") if len(latest_fi) else None),
+            "grossprofit_margin": _sf(latest_fi.get("grossprofit_margin") if len(latest_fi) else None),
+            "netprofit_margin": _sf(latest_fi.get("netprofit_margin") if len(latest_fi) else None),
+            "debt_to_assets": _sf(latest_fi.get("debt_to_assets") if len(latest_fi) else None),
             "revenue_yoy": rev_yoy,
             "is_target": code == target_code,
         })
 
     df = pd.DataFrame(rows)
-
-    # 7. v5.1.2 新增: 行业全员 PE/PB 分布(不只 5 家 peer)
-    industry_stats = _industry_full_distribution(merged, target_code, industry)
-
-    # 8. 生成 markdown
-    md = _format_markdown(df, target_code, target_name, industry, td, industry_stats, manual_peers)
+    industry_stats = _industry_full_distribution(merged, target_code, industry or "")
+    md = _format_markdown(df, target_code, target_name, industry or "(unknown)", td, industry_stats, manual_peers)
+    # stamp free-source provenance line
+    md += f"\n\n---\n*P1 peer 宇宙: `{uni.provenance.primary}` · industry enrich={industry!r} · {meta.get('note','')}*\n"
     return df, md
-
 
 def _industry_full_distribution(
     merged: pd.DataFrame, target_code: str, industry: str
@@ -358,7 +390,7 @@ def _format_markdown(
     lines = [
         f"# 可比公司对标: {target_name} ({target_code})",
         "",
-        f"**行业分类** (Tushare industry): **{industry}**",
+        f"**行业分类** (免费源 board/spot enrich): **{industry}**",
         f"**Peer 选取规则**: {rule}",
         f"**财务截至**: 最新披露期 · **行情截至**: {trade_date}",
         "",
@@ -367,9 +399,8 @@ def _format_markdown(
     ]
     if not manual_peers:
         lines[-1:] = [
-            "> ⚠️ 本表同业是按 Tushare **行业分类字段自动选**的。对细分行业的公司, 这会选出与本公司"
-            "**零业务重合**的对照物 —— 华特气体被归进「化工原料」, 据此算出的估值分位与真实同业**正好相反**。"
-            "选错时用 `--peer-codes 600xxx.SH,300yyy.SZ` 重跑, 本表即按人工指定的同业出。",
+            "> ⚠️ 本表同业是按公开 **行业成分/板块** 自动选的，错配风险与旧 Tushare industry 路径同类"
+            "（细分公司可能对上零业务重合的对照物）。**推荐** `--peer-codes 600xxx.SH,300yyy.SZ` 重跑。",
             "",
             "## §1 对比表",
             "",

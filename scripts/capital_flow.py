@@ -39,42 +39,42 @@ import pandas as pd
 
 from . import config
 from .codes import normalize_a_code
-
-# P0: Tushare-backed moneyflow deferred to P1
-_P0_MONEYFLOW_DEFERRED = True
+from .providers.base import SourceStatus
 
 
-def _deferred_capital_flow_md(target_code: str) -> str:
-    return "\n".join(
-        [
-            f"# 资金流向 / 控盘（P0 降级）— {target_code}",
-            "",
-            "**status=`deferred`** — 原 Tushare moneyflow / hk_hold / margin / 龙虎榜 簇已移除，P1 用免费多源重接。",
-            "",
-            "请勿将本文件解读为「无资金异动」或「无龙虎榜」。",
-            "",
-            "*由 `scripts/capital_flow.py` 生成（P0 stub）*",
-            "",
-        ]
-    )
-
-
-def _latest_n_trade_dates(tc, n: int = 60) -> list[str]:
-    """从今天倒推找最近 n 个交易日 (用 trade_cal 接口)."""
-    today = dt.date.today()
-    start = today - dt.timedelta(days=int(n * 1.7))  # 有周末需要放宽
+def _latest_n_trade_dates(n: int = 60) -> list[str]:
+    """最近 n 个交易日 (akshare sina 日历; 失败则自然日回退)."""
     try:
-        cal = tc._pro.trade_cal(
-            exchange="SSE",
-            start_date=start.strftime("%Y%m%d"),
-            end_date=today.strftime("%Y%m%d"),
-            is_open="1",
-        )
-        dates = sorted(cal["cal_date"].tolist(), reverse=True)
-        return dates[:n]
+        from .providers.eastmoney_flow import fetch_trade_cal
+
+        return fetch_trade_cal(n)
     except Exception:
-        # fallback: 简单按 ±2 填充
+        today = dt.date.today()
         return [(today - dt.timedelta(days=i)).strftime("%Y%m%d") for i in range(n)]
+
+
+def _record_cluster(name: str, result) -> pd.DataFrame:
+    """Map ClusterResult provenance into legacy _CALL_ERRORS / _CALL_EMPTY."""
+    st = result.provenance.status
+    if st == SourceStatus.SOURCE_FAILED:
+        _CALL_ERRORS[name] = result.provenance.error or result.provenance.note or "source_failed"
+        _CALL_EMPTY.pop(name, None)
+        return result.df if result.df is not None else pd.DataFrame()
+    if st in (SourceStatus.EMPTY_GENUINE, SourceStatus.DEFERRED) or result.df is None or result.df.empty:
+        if st == SourceStatus.DEFERRED:
+            _CALL_ERRORS[name] = result.provenance.note or "deferred"
+            _CALL_EMPTY.pop(name, None)
+        else:
+            _CALL_EMPTY[name] = result.provenance.note or "empty_genuine"
+            _CALL_ERRORS.pop(name, None)
+        return result.df if result.df is not None else pd.DataFrame()
+    if st == SourceStatus.PARTIAL and (result.df is None or result.df.empty):
+        _CALL_EMPTY[name] = result.provenance.note or "partial empty"
+        _CALL_ERRORS.pop(name, None)
+        return pd.DataFrame()
+    _CALL_ERRORS.pop(name, None)
+    _CALL_EMPTY.pop(name, None)
+    return result.df
 
 
 # 接口名 → 失败原因。空表有两种含义(真的没有 / 根本没调通), 渲染层必须能分开说 ——
@@ -127,99 +127,53 @@ def collect_capital_flow(
     target_code: str,
     days: int = 60,
 ) -> tuple[dict[str, pd.DataFrame], str]:
-    """Returns (raw_data_dict, markdown_report)."""
+    """Returns (raw_data_dict, markdown_report). P1: free providers, no Tushare."""
     target_code = normalize_a_code(target_code)
-    if _P0_MONEYFLOW_DEFERRED:
-        return {}, _deferred_capital_flow_md(target_code)
-    from .tushare_collector import TushareCollector  # pragma: no cover — attic path
+    from .providers import akshare_fundamentals as akf
+    from .providers import eastmoney_flow as em_flow
+    from .providers import governance as gov
+    from .providers import sina_quote
 
     _CALL_ERRORS.clear()
     _CALL_EMPTY.clear()
-    tc = TushareCollector()
-    tc._ensure_pro()
-    pro = tc._pro
-
-    # 日期范围
-    end_date = dt.date.today().strftime("%Y%m%d")
-    start_date = (dt.date.today() - dt.timedelta(days=int(days * 1.5))).strftime("%Y%m%d")
 
     raw: dict[str, pd.DataFrame] = {}
 
-    # ---------- 1. 个股主力资金流 ----------
-    raw["moneyflow"] = _safe_call(
-        pro.moneyflow,
-        ts_code=target_code,
-        start_date=start_date,
-        end_date=end_date,
+    raw["moneyflow"] = _record_cluster("moneyflow", em_flow.fetch_moneyflow(target_code, days=days))
+    raw["moneyflow_hsgt"] = _record_cluster("moneyflow_hsgt", em_flow.fetch_moneyflow_hsgt(days=days))
+    raw["hk_hold"] = _record_cluster("hk_hold", em_flow.fetch_hk_hold(target_code, days=max(days, 90)))
+    raw["margin_detail"] = _record_cluster("margin_detail", em_flow.fetch_margin_detail(target_code, days=days))
+    tl = em_flow.fetch_top_list(target_code, days=30)
+    raw["top_list"] = _record_cluster("top_list", tl)
+    raw["top_inst"] = _record_cluster("top_inst", em_flow.fetch_top_inst(target_code, tl.df))
+    raw["block_trade"] = _record_cluster("block_trade", gov.fetch_block_trade(target_code, days=days))
+
+    raw["top10_all"] = _record_cluster("top10_holders", gov.fetch_top10_holders(target_code))
+    raw["top10_float"] = _record_cluster("top10_floatholders", gov.fetch_top10_floatholders(target_code))
+    raw["holder_num"] = _record_cluster("stk_holdernumber", gov.fetch_stk_holdernumber(target_code))
+
+    daily = sina_quote.fetch_daily(target_code, years=1)
+    raw["daily_basic"] = _record_cluster(
+        "daily_basic", akf.fetch_daily_basic(target_code, daily.df if not daily.df.empty else None)
     )
+    # daily close series helps block-trade discount / hsgt cost — attach if available
+    if not daily.df.empty:
+        # merge close into daily_basic-shaped frame for metrics that look up close by trade_date
+        d = daily.df[["trade_date", "close"]].copy()
+        db = raw["daily_basic"]
+        if db.empty:
+            raw["daily_basic"] = d
+        elif "close" not in db.columns or db["close"].isna().all():
+            raw["daily_basic"] = d
+        else:
+            # prefer longer daily history for cost derivation
+            raw["daily_basic"] = d if len(d) > len(db) else db
 
-    # ---------- 2. 陆股通整体 (参考背景) ----------
-    raw["moneyflow_hsgt"] = _safe_call(
-        pro.moneyflow_hsgt,
-        start_date=start_date,
-        end_date=end_date,
-    )
+    raw["stock_basic"] = _record_cluster("stock_basic", akf.fetch_stock_basic(target_code))
 
-    # ---------- 3. 陆股通个股持股每日 ----------
-    raw["hk_hold"] = _safe_call(
-        pro.hk_hold,
-        ts_code=target_code,
-        start_date=start_date,
-        end_date=end_date,
-    )
-
-    # ---------- 4. 两融明细 ----------
-    raw["margin_detail"] = _safe_call(
-        pro.margin_detail,
-        ts_code=target_code,
-        start_date=start_date,
-        end_date=end_date,
-    )
-
-    # ---------- 5. 龙虎榜上榜 ----------
-    # top_list 需按日期迭代 (每天一调用, 所以只取近 30 日的)
-    top_dates = _latest_n_trade_dates(tc, n=30)
-    tl_dfs = []
-    for d in top_dates:
-        df = _safe_call(pro.top_list, _track_empty=False, trade_date=d, ts_code=target_code)
-        if not df.empty:
-            tl_dfs.append(df)
-    raw["top_list"] = pd.concat(tl_dfs, ignore_index=True) if tl_dfs else pd.DataFrame()
-
-    # ---------- 6. 龙虎榜机构席位 ----------
-    ti_dfs = []
-    if not raw["top_list"].empty:
-        for d in raw["top_list"]["trade_date"].unique():
-            df = _safe_call(pro.top_inst, _track_empty=False, trade_date=d, ts_code=target_code)
-            if not df.empty:
-                ti_dfs.append(df)
-    raw["top_inst"] = pd.concat(ti_dfs, ignore_index=True) if ti_dfs else pd.DataFrame()
-
-    # ---------- 7. 大宗交易 (v5.1.2 新增) ----------
-    # 信号比龙虎榜更干净: 机构底部建仓 / 高位清仓的真实时点
-    raw["block_trade"] = _safe_call(
-        pro.block_trade,
-        ts_code=target_code,
-        start_date=start_date,
-        end_date=end_date,
-    )
-
-    # ---------- 辅助: 拉 top10_holders(含限售) + top10_floatholders + stk_holdernumber + daily_basic ----------
-    # v4.5 关键修正: 同时拉"全体前十大股东"(含限售,反映真实控盘)
-    raw["top10_all"] = tc.top10_holders(target_code, start_year=dt.date.today().year - 1)
-    raw["top10_float"] = tc.top10_floatholders(target_code, start_year=dt.date.today().year - 1)
-    raw["holder_num"] = tc.stk_holdernumber(target_code, start_year=dt.date.today().year - 1)
-    raw["daily_basic"] = tc.daily_basic(target_code)
-    raw["stock_basic"] = tc.stock_basic(target_code)
-
-    # ---------- 推导指标 ----------
     metrics = _derive_metrics(target_code, raw)
-
-    # ---------- 生成 markdown ----------
     md = _format_markdown(target_code, raw, metrics)
-
     return raw, md
-
 
 def _family_control(top10_latest: pd.DataFrame) -> tuple[float, str, list[str]]:
     """v4.5 新增: 识别实控人家族/一致行动人合计持股.
@@ -864,8 +818,8 @@ def _format_markdown(target_code: str, raw: dict, m: dict) -> str:
             lines.append("")
         if _CALL_EMPTY:
             lines.extend([
-                "**调通了但返回 0 行** —— 可能真的没有, 也可能是积分不够 / 该接口不覆盖这只票;",
-                "Tushare 这两种情况都是静默空表, 脚本分不出来, **要写「没有」得回原始披露核一眼**:",
+                "**调通了但返回 0 行** (`empty_genuine`) —— 可能真的没有, 也可能是源覆盖缺口;",
+                "脚本已与 `source_failed` 分开记录, **要写「没有」仍得回原始披露核一眼**:",
                 "",
             ])
             for name, params in sorted(_CALL_EMPTY.items()):
@@ -875,8 +829,8 @@ def _format_markdown(target_code: str, raw: dict, m: dict) -> str:
         "",
         "---",
         "",
-        f"*由 `scripts/capital_flow.py` 自动生成 (v5.1.2: 10 段)*",
-        f"*数据源: Tushare (moneyflow / hk_hold / margin_detail / top_list / top_inst / block_trade / top10_floatholders / stk_holdernumber + daily_basic)*",
+        f"*由 `scripts/capital_flow.py` 自动生成 (P1: 免费多源 / v5.1.2 段落结构)*",
+        f"*数据源: akshare/东财/新浪/交易所公开 (moneyflow / hk_hold / margin_detail / top_list / block_trade / top10_holders / stk_holdernumber + daily_basic) — 见各簇 provenance / §11*",
         f"*挂载为报告附录C 舆情与资金底稿。判断链里④路径用它判拥挤度与波动放大、②状态用它判注意力先行——资金面属传闻一侧证据,不作基本面改善的实锤*",
     ])
 

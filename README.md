@@ -5,11 +5,11 @@
 它会自己去拉财报数据、下载并精读年报原文、跑完会计审计框架，然后把结论收敛成一张五行决断卡：
 **是不是好公司 / 在变好吗 / 贵不贵 / 扛得住吗 / 现在该怎么办**。
 
-**本分支（P0 改造）仅支持 A 股**，数据采集改为 **akshare / 新浪 / 巨潮等免费多源**，**不再需要 Tushare token**。报告全程说人话，每个关键数字都能回到出处。
+**本分支（P0+P1 改造）仅支持 A 股**，数据采集改为 **akshare / 新浪 / 巨潮等免费多源**，**不再需要 Tushare token**。P1 已接治理簇（股东/质押/预告/解禁/大宗等）、资金流与同业；空表带 provenance，禁止把源失败写成「无异动」。报告全程说人话，每个关键数字都能回到出处。
 
 <p align="center">
   <a href="https://github.com/leafpaper/claude-company-analysis/actions/workflows/tests.yml"><img src="https://github.com/leafpaper/claude-company-analysis/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
-  <img src="https://img.shields.io/badge/version-v8.10--p0-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-v8.10--p1-blue" alt="version">
   <img src="https://img.shields.io/badge/markets-A%E8%82%A1%20only-green" alt="markets">
   <img src="https://img.shields.io/badge/data-akshare%20%7C%20sina%20%7C%20cninfo-orange" alt="data">
   <img src="https://img.shields.io/badge/gate-lint%2018%20%2B%202%20reviewer-red" alt="gate">
