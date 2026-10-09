@@ -1,15 +1,25 @@
-"""A-share / (legacy) HK code normalization — shared, no data vendor dependency."""
+"""A-share code normalization — shared, no data vendor dependency."""
 from __future__ import annotations
 
 import re
 
 _A_SHARE_PATTERN = re.compile(r"^(\d{6})(?:\.(SH|SZ|BJ))?$", re.IGNORECASE)
-_HK_PATTERN = re.compile(r"^(\d{1,5})(?:\.HK)?$", re.IGNORECASE)
+
+
+def is_a_share_ticker(code: str) -> bool:
+    """True if code is / can be normalized to an A-share ts_code (.SH/.SZ/.BJ)."""
+    try:
+        normalize_a_code(code)
+        return True
+    except (TypeError, ValueError):
+        return False
 
 
 def normalize_a_code(code: str) -> str:
     """'002862' → '002862.SZ'; '600519' → '600519.SH'; '920522' → '920522.BJ'."""
-    code = code.strip().upper()
+    code = (code or "").strip().upper()
+    if code.endswith((".HK", ".US")):
+        raise ValueError(f"Not a valid A-share code (US/HK removed): {code!r}")
     m = _A_SHARE_PATTERN.match(code)
     if not m:
         raise ValueError(f"Not a valid A-share code: {code!r}")
@@ -24,15 +34,6 @@ def normalize_a_code(code: str) -> str:
     if first in "489":
         return f"{num}.BJ"
     raise ValueError(f"Unknown market prefix for {code!r}")
-
-
-def normalize_hk_code(code: str) -> str:
-    """Legacy helper (HK product path removed in P0). Kept for attic imports."""
-    code = code.strip().upper()
-    m = _HK_PATTERN.match(code)
-    if not m:
-        raise ValueError(f"Not a valid HK code: {code!r}")
-    return f"{m.group(1).zfill(4)}.HK"
 
 
 def to_em_secid(ts_code: str) -> str:

@@ -1,10 +1,9 @@
-"""HK product path removed (P0). Original module: attic/hk_collector.py."""
-from __future__ import annotations
+"""HK product path removed (P0). Kept as import stub so old call sites fail loudly."""
 
 
 class HKCollector:
     def __init__(self, *args, **kwargs):
-        raise RuntimeError("HK market support removed in P0 — A-share only. See attic/hk_collector.py")
+        raise RuntimeError("HK market support removed — A-share only")
 
     def collect_all(self, *args, **kwargs):
-        raise RuntimeError("HK market support removed in P0 — A-share only")
+        raise RuntimeError("HK market support removed — A-share only")

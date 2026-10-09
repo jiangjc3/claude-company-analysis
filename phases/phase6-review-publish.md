@@ -92,12 +92,15 @@ run_dir     = {run_dir}
 artifacts_dir = {artifacts_dir}
 report_path = {run_dir}/{company}-analysis-{date}.md
 lint_v8 已全绿(schema/红旗闭环/数字home/合理价区间/封顶/越权/外链/同步都查过了),别重复机器规则。
-按 agents/reviewer-logic.md 的 5 项检查出判定与 FIX,响应只回评审结论,不要回放文件内容。""")
+按 agents/reviewer-logic.md 的 6 项检查出判定与 FIX(含 1.6 多源缺口不伪装:对照 data_sources.md /
+附录E,禁止把 source_failed/deferred/partial 写成「无质押/无资金异动/无高管」等事实)。
+响应只回评审结论,不要回放文件内容。""")
 
 Agent(subagent_type="reviewer-delivery", run_in_background=True, description="维度2 可读性与交付",
       prompt=f"""评审可读性与交付(第 {round} 轮)。run_dir / artifacts_dir / report_path 同上;
 html_path = {run_dir}/{company}-analysis-{date}.html
-按 agents/reviewer-delivery.md 的三组检查(结论先行 / 全说人话 / 390px 走查清单)出判定与 FIX。""")
+按 agents/reviewer-delivery.md 的检查(结论先行 / 全说人话含 2.2.g 多源缺口对读者撒谎 /
+390px 走查清单)出判定与 FIX。""")
 ```
 
 两个都 `run_in_background=True`,等系统的 task-notification 收齐两份响应。

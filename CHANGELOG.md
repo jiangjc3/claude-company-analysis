@@ -4,6 +4,27 @@
 
 ---
 
+## [v8.10-p3] — 2026-10-09 — Compare / Review 强化 / 硬化
+
+**Changed**
+
+- `--compare`：**仅 A 股**成员（`parse_member` / `create_group` / `assemble` / `library_candidates` 拒港美）；`phases/compare-pipeline.md` 三路候选同步
+- 双 reviewer：`reviewer-logic` 增 1.6「多源缺口不伪装」；`reviewer-delivery` 增 2.2.g；`phase6` prompt 同步
+- 删除 `attic/` 旧 Tushare / US / HK 采集器副本（方案 D4）；shim 仍大声失败
+- `scripts/README.md` / 根 README：P3 范围与合规链接
+
+**Added**
+
+- `docs/data-sources-compliance.md`（数据源与合规短页）+ `CONTRIBUTING.md`
+- 可选实网 CI 模板：`docs/optional-network-nightly.workflow.yml`（复制到 `.github/workflows/`；`CA_NETWORK_TESTS=1`，`continue-on-error`）
+- 单测 `scripts/tests/test_a_share_p3.py`；`test_daily_fallback` 改为 sina/shim（无 TushareCollector）
+
+**Deferred (explicit gaps)**
+
+- `stk_managers` / `stk_rewards` / `top_inst` 仍无稳免费单票 API → 保持 `deferred`/`partial`（禁止静默当事实）
+
+---
+
 ## [v8.10-p2] — 2026-10-09 — Agents / 报告装配 / `--review` 披露日历
 
 **Changed**
@@ -19,10 +40,9 @@
 - `scripts/run_fixture_pipeline.py`：东山 fixture → 主报告 md + `lint_v8` + HTML（无网络 / 无 LLM）
 - 单测 `scripts/tests/test_a_share_p2.py`（披露同步 + fixture 管线 + 产品文档烟测）
 
-**Deferred to P3**
+**Deferred to P3** *(landed in v8.10-p3)*
 
 - `--compare` 仅 A 股成员 hardening / 双 reviewer「多源缺口」提示 / CI nightly network / 用户「数据源与合规」短页
-- `stk_managers` / `stk_rewards` / `top_inst` 仍无稳免费单票 API → 保持 `deferred`/`partial` 显式缺口
 - attic 中旧 Tushare 采集器最终删除（方案 D4）
 
 ---

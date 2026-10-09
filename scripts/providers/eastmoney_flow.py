@@ -267,7 +267,7 @@ def fetch_top_inst(ts_code: str, top_list_df: pd.DataFrame | None = None) -> Clu
             primary=primary,
             status=SourceStatus.PARTIAL,
             rows=0,
-            note="P1: institution seat detail not reliably available free per stock; "
+            note="P3 gap: institution seat detail not reliably available free per stock; "
             "top_list reasons still usable. Do not invent net_buy.",
             used=None,
         ),

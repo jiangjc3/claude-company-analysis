@@ -1,99 +1,43 @@
-"""集成测试: TushareCollector.daily() 在 Pro 返回空时会触发 legacy fallback.
+"""Sina / legacy daily quote path (P3: no TushareCollector).
 
-无法在 CI 模拟"Pro 积分不足", 因此用 monkeypatch 直接让 Pro 接口返回空,
-验证下游 fallback 分支命中并产生 Pro 风格 schema 的 DataFrame。
+Historically this file patched TushareCollector.daily() to force a Pro-empty →
+legacy fallback. Tushare is gone; sina_quote / legacy_quote is the primary daily
+path. Offline unit coverage lives in test_legacy_quote.py; this module only keeps
+an optional live smoke behind CA_NETWORK_TESTS=1.
 
-⚠️ **本文件是全套里唯一一组真集成测试**: 要 `TUSHARE_TOKEN`(构造 collector),
-第一条还会真的去调 legacy 行情接口取数。没有 token 就整组跳过 —— 让 CI 能在无凭据下跑绿,
-而不是把凭据塞进 CI。其余 5xx 条单测全部跑在夹具与临时目录上, 不碰网络、不要 token。
-
-运行:
-    cd skills/company-analysis
-    python3 -m scripts.tests.test_daily_fallback
+Run:
+    CA_NETWORK_TESTS=1 python -m unittest scripts.tests.test_daily_fallback
 """
 from __future__ import annotations
 
-import sys
+import os
 import unittest
-from unittest.mock import MagicMock, patch
 
-import pandas as pd
-
-from scripts import config
-from scripts.tushare_collector import TushareCollector
 from scripts.legacy_quote import get_daily_history_legacy
 
+RUN_NETWORK = os.environ.get("CA_NETWORK_TESTS") == "1"
 
-# 判据用 `config.TUSHARE_TOKEN` 而不是直接读环境变量 —— 它才是采集器实际用的那个口径
-# (本机 token 可能来自 config 的本地兜底而不在环境里, 直接读 env 会把本机也误跳过)。
-@unittest.skipUnless(
-    config.TUSHARE_TOKEN,
-    "集成测试: 需要 Tushare token 且会访问网络(CI 无凭据时跳过)",
-)
-class TestDailyFallback(unittest.TestCase):
-    def setUp(self):
-        self.tc = TushareCollector()
-        # 强制走真实 _ensure_pro 但拦截 _call 让其返回空,模拟"Pro 积分不足"
-        self.tc._ensure_pro()
-        # 清缓存避免之前测试 / 真实调用结果干扰
-        from scripts import data_cache
-        for ts_code in ("920522.BJ",):
-            for years in (1, 3):
-                data_cache.invalidate(f"tushare_daily_{ts_code}_y{years}")
 
-    def test_pro_empty_triggers_legacy_fallback(self):
-        """Pro 返回空 → fallback 命中 → DataFrame schema 与 Pro 一致."""
-        # patch _call 让它对 daily 返回空
-        original_call = self.tc._call
-
-        def mock_call(fn, **kwargs):
-            if getattr(fn, "__name__", "") == "daily":
-                return pd.DataFrame()
-            return original_call(fn, **kwargs)
-
-        with patch.object(self.tc, "_call", side_effect=mock_call):
-            df = self.tc.daily("920522.BJ", years=1)
-
-        self.assertGreater(len(df), 0, "fallback 应返回非空 DataFrame")
-        expected_cols = {
+@unittest.skipUnless(RUN_NETWORK, "set CA_NETWORK_TESTS=1 to hit sina kline")
+class TestSinaDailyLive(unittest.TestCase):
+    def test_bj_code_schema(self):
+        df = get_daily_history_legacy("920522.BJ", years=1)
+        self.assertGreater(len(df), 0, "sina kline should return rows for BJ sample")
+        expected = {
             "ts_code", "trade_date", "open", "high", "low", "close",
             "pre_close", "change", "pct_chg", "vol", "amount",
         }
-        self.assertEqual(set(df.columns), expected_cols)
+        self.assertTrue(expected.issubset(set(df.columns)))
         self.assertEqual(df["ts_code"].iloc[0], "920522.BJ")
 
-    def test_pro_nonempty_no_fallback(self):
-        """Pro 返回非空 → 不会触发 fallback (走正常路径)."""
-        # 让 _call 返回明显标记的"Pro 数据"
-        sentinel_df = pd.DataFrame({
-            "ts_code": ["920522.BJ"],
-            "trade_date": ["20260424"],
-            "open": [100.0], "high": [101.0], "low": [99.0], "close": [100.5],
-            "pre_close": [99.5], "change": [1.0], "pct_chg": [1.005],
-            "vol": [99999.0], "amount": [9999999.0],
-            "_marker": ["from_pro"],
-        })
 
-        def mock_call(fn, **kwargs):
-            return sentinel_df.copy()
+class TestTushareShimStillDead(unittest.TestCase):
+    def test_tushare_collector_raises(self):
+        from scripts.tushare_collector import TushareCollector
 
-        # 同时 mock legacy 以确保不被调用
-        with patch.object(self.tc, "_call", side_effect=mock_call), \
-             patch("scripts.legacy_quote.get_daily_history_legacy") as mock_legacy:
-            df = self.tc.daily("920522.BJ", years=1)
-
-        mock_legacy.assert_not_called()
-        self.assertIn("_marker", df.columns)
-        self.assertEqual(df["_marker"].iloc[0], "from_pro")
-
-
-def main():
-    loader = unittest.TestLoader()
-    suite = loader.loadTestsFromTestCase(TestDailyFallback)
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-    sys.exit(0 if result.wasSuccessful() else 1)
+        with self.assertRaises(RuntimeError):
+            TushareCollector()
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main()

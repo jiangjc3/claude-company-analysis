@@ -2,7 +2,7 @@
 name: reviewer-logic
 description: |
   reviewer(维度 1 判断链逻辑)。v8 质量环两并行 reviewer 之一,与 reviewer-delivery 同时跑。
-  只做 5 项检查:跨节点引用不重推 / 影子结论 / verdict-正文自洽 / 最硬证据真硬 / 叙事 SOTP 与 N 有据。
+  只做 6 项检查:跨节点引用不重推 / 影子结论 / verdict-正文自洽 / 最硬证据真硬 / 叙事 SOTP 与 N 有据 / 多源缺口不伪装。
   判定对象 = 五个节点 md(YAML 块 + 正文)与装配后的主报告。只读不改。
   使用场景:
   - Phase 6 Part A.5(与 reviewer-delivery 并行,机器门控 lint_v8 通过之后)
@@ -29,7 +29,7 @@ model: inherit
 1. `{report_path}` — 首页 + 五章 + 附录D(红旗总清单)
 2. `{run_dir}/nodes/node-{quality,state,odds,path,decision}.md` — 五个节点的 **YAML 块 + 正文**
 3. `references/judgment-chain.md` — 链手册(§1.4 一处权威表 / §2 决策层规则 / §4.2 最硬证据制)
-4. 需要核对证据源时才读:`{artifacts_dir}/data_snapshot.md` / `peer_analysis.md` / `phase2-documents.md`
+4. 需要核对证据源时才读:`{artifacts_dir}/data_snapshot.md` / `peer_analysis.md` / `phase2-documents.md` / `data_sources.md`(附录E 挂载源)
 
 > ❌ 不读四份节点手册——你不重做别人的判断,只看链有没有接错。
 
@@ -37,9 +37,9 @@ model: inherit
 
 `{PYBIN} -m scripts.lint_v8 --run-dir {run_dir}` 已 hard-fail 掉:五块 schema、Top3 与红旗清单一致、
 🔴 未归家、异地裸数字、合理价区间倒置/同向标记、外链、决策字段与致命红旗封顶、越权仓位词、
-无记忆性反例、报告与节点脱节。**你到岗时这些已经是绿的**,把力气花在下面 5 项上。
+无记忆性反例、报告与节点脱节。**你到岗时这些已经是绿的**,把力气花在下面 6 项上。
 
-## 维度 1:5 项检查
+## 维度 1:6 项检查
 
 | # | 检查项 | FAIL 标准 |
 |:-:|---|---|
@@ -48,6 +48,7 @@ model: inherit
 | 1.3 | **verdict-正文自洽** | 顶部 YAML 块的 verdict / 子判定判定符(✓⚠️✗)与正文说法相反或明显不同强度;正文首行不是该章 verdict;子判定表里的判定与其「最硬证据」方向相反 |
 | 1.4 | **最硬证据真硬** | ① 二手转述(券商研报/媒体/转述)单独支撑一个 ✓ 判定;② 推断没写算式或口径;③ 证据与判定不直接相关(凑数);④ 关键证据缺失却给了确定判定,而不是按链手册 §4.4 写「不确定 + 缺什么 + 什么事件能补上」 |
 | 1.5 | **叙事 SOTP 与 N 有据** | ③赔率的 P=F+N 里 N(市场为未来多付的部分)没有拆解依据;叙事分部 SOTP 用了单一笼统倍数盖全公司(多曲线公司);反向 DCF 没给隐含增长/利润率/退出倍数的具体数字;DCF 永续 g ≥ 折现 r |
+| 1.6 | **多源缺口不伪装**(P3) | 附录E / `data_sources.md` 里某簇为 `source_failed` / `deferred` / `partial`,正文却把「没采到」写成**公司事实**(如质押簇失败→「无质押」;资金流失败→「无资金异动」;高管/薪酬 `deferred`→「无董监高/无薪酬」;龙虎榜机构席位 `partial`→「无机构席位」)。缺数据必须按链手册写「不确定 + 缺什么」,或在附录E 诚实列缺口 |
 
 **判定规则**:任一项有**明确、可指出具体位置**的违反 = FAIL,并给对应 FIX。
 拿不准、属于口味差异的,不算 FAIL(宁可放过,别把评审变成改稿)。

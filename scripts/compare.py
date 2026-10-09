@@ -41,6 +41,7 @@ from . import assembly
 from . import config
 from . import manifest as manifest_mod
 from . import verdict_block
+from .codes import is_a_share_ticker, normalize_a_code
 
 GROUP_NAME = "group.json"
 PRODUCT_NAME = "compare.json"
@@ -49,6 +50,7 @@ JUDGE_NAME = "compare-judge.md"
 # 基准日超过这个天数标「陈旧」并提示先 --review(spec §9: 90 天 ≈ 一个披露季)
 STALE_THRESHOLD_DAYS = 90
 
+# 候选三路仍记 source 标签;产品范围仅 A 股(港美路径已删)
 MEMBER_SOURCES = ("anchor", "longbridge", "library", "model")
 
 # 并排表的行序 —— 五问顺序与单报告决断卡一致(assembly.CARD_ROWS)
@@ -57,6 +59,8 @@ CARD_QUESTIONS = tuple(question for question, _ in assembly.CARD_ROWS)
 # 行动档位的进攻度(并排列序用;与 assembly.GEAR_BANDS 同一份六档词表)
 GEAR_ORDER = {gear: i for i, gear in enumerate(
     ("核心仓", "期权仓", "等证据临界", "不追高", "减仓", "回避"))}
+
+_NON_A_MARKETS = frozenset({"us", "hk", "美股", "港股", "us_stock", "hk_stock"})
 
 
 class CompareError(ValueError):
@@ -74,7 +78,26 @@ class MissingReport(CompareError):
 # ---------------------------------------------------------------- slug / 目录
 
 _SLUG_CLEAN = re.compile(r"[^a-z0-9]+")
-_TICKER_SUFFIX = re.compile(r"\.(SH|SZ|BJ|HK|US)$", re.I)
+_TICKER_SUFFIX = re.compile(r"\.(SH|SZ|BJ)$", re.I)
+
+
+def require_a_share_ticker(ticker: str, *, where: str = "成员") -> str:
+    """Normalize ticker or raise CompareError — compare is A-share only (P3)."""
+    raw = (ticker or "").strip()
+    if not raw:
+        raise CompareError(f"{where}缺少 A 股 ticker(.SH/.SZ/.BJ)")
+    try:
+        return normalize_a_code(raw)
+    except ValueError as exc:
+        raise CompareError(
+            f"{where}仅限 A 股(.SH/.SZ/.BJ); 港股/美股不进 `--compare`(收到 {raw!r})"
+        ) from exc
+
+
+def _market_is_non_a(market) -> bool:
+    if market is None:
+        return False
+    return str(market).strip().lower() in _NON_A_MARKETS
 
 
 def slugify(text: str) -> str:
@@ -154,7 +177,8 @@ def parse_member(spec: str) -> dict:
     parts = [p.strip() for p in str(spec).split(":")]
     if len(parts) < 2 or not parts[0] or not parts[1]:
         raise CompareError(f"成员写法应为 `公司:ticker[:source[:备注]]`, 收到: {spec}")
-    member = {"company": parts[0], "ticker": parts[1], "source": "model"}
+    ticker = require_a_share_ticker(parts[1], where=f"成员 {parts[0]}")
+    member = {"company": parts[0], "ticker": ticker, "source": "model"}
     if len(parts) >= 3 and parts[2]:
         if parts[2] not in MEMBER_SOURCES:
             raise CompareError(f"source 只能是 {'/'.join(MEMBER_SOURCES)}, 收到: {parts[2]}")
@@ -176,8 +200,9 @@ def create_group(
 ) -> dict:
     """建组并把 slug 登记进每个成员的 manifest.compare_groups(有 manifest 的才登记)。
 
-    候选是怎么查出来的(Longbridge / 库内 peer / 模型兜底)记在 member.source 里 ——
+    候选是怎么查出来的(Longbridge A 股产业链 / 库内 peer / 模型兜底)记在 member.source 里 ——
     验收「三路优先级」时可回查, 也让下次成组知道哪几家是模型猜的。
+    **全部成员必须是 A 股**(.SH/.SZ/.BJ);港美 ticker 直接拒。
     """
     members = [dict(m) for m in (members or [])]
     if not any(m["company"] == anchor for m in members):
@@ -188,6 +213,13 @@ def create_group(
             company_dir = find_company_dir(m["company"])
             existing = manifest_mod.load(company_dir) if company_dir else None
             m["ticker"] = (existing or {}).get("ticker") or m["company"]
+        m["ticker"] = require_a_share_ticker(m["ticker"], where=f"成员 {m.get('company')}")
+        if _market_is_non_a(m.get("market")):
+            raise CompareError(
+                f"成员 {m.get('company')} 的 market={m.get('market')!r} 不是 A 股;"
+                " `--compare` 仅 A 股"
+            )
+        m["market"] = "A股"
 
     anchor_member = next(m for m in members if m["company"] == anchor)
     group = {
@@ -210,10 +242,11 @@ def create_group(
 # ---------------------------------------------------------------- 候选:库内 peer(优先级②)
 
 def library_candidates(anchor: str) -> list[dict]:
-    """报告库内已有 manifest 的其他公司 = 候选优先级②(脚本能查的那一路)。
+    """报告库内已有 manifest 的其他 **A 股**公司 = 候选优先级②(脚本能查的那一路)。
 
-    ① Longbridge 产业链/成分股 与 ③ 模型按业务描述兜底都要工具或模型, 归主 agent
+    ① Longbridge A 股产业链/成分股 与 ③ 模型按业务描述兜底都要工具或模型, 归主 agent
     (见 phases/compare-pipeline.md);本函数只回答「库里还有谁, 各自有没有可用报告」。
+    港美 manifest(若残留)直接跳过,不进候选。
     """
     out: list[dict] = []
     seen: set[str] = set()
@@ -226,6 +259,10 @@ def library_candidates(anchor: str) -> list[dict]:
                 continue
             seen.add(name)
             m = manifest_mod.load(company_dir)
+            ticker = (m or {}).get("ticker") or ""
+            market = (m or {}).get("market")
+            if _market_is_non_a(market) or (ticker and not is_a_share_ticker(ticker)):
+                continue
             try:
                 if not m:
                     # 库里有这个名字但没有 v8 manifest(多半是 v8 之前的旧版报告)——
@@ -236,7 +273,7 @@ def library_candidates(anchor: str) -> list[dict]:
             except MissingReport as exc:
                 ready, detail = False, exc.reason
             out.append({
-                "company": name, "ticker": (m or {}).get("ticker") or "", "market": (m or {}).get("market"),
+                "company": name, "ticker": ticker, "market": market or "A股",
                 "source": "library", "report_ready": ready, "detail": detail,
             })
     return out
@@ -507,6 +544,8 @@ def assemble(
     members: list[dict] = []
     missing: list[dict] = []
     for entry in group["members"]:
+        # Reject leftover US/HK group.json from older forks before assembling
+        require_a_share_ticker(entry.get("ticker") or "", where=f"成员 {entry.get('company')}")
         company = entry["company"]
         company_dir = find_company_dir(company)
         try:
@@ -854,13 +893,16 @@ def main() -> int:
             for c in cands:
                 mark = "✅" if c["report_ready"] else "🕳️"
                 print(f"  {mark} {c['company']} {c['ticker']} — {c['detail']}")
-            print("\n① Longbridge 产业链/成分股 与 ③ 模型按业务描述兜底由主 agent 补齐;"
-                  "候选**必经用户确认/增删**才能成组。")
+            print("\n① Longbridge **A 股**产业链/成分股 与 ③ 模型按业务描述兜底由主 agent 补齐;"
+                  "候选**必经用户确认/增删**才能成组;港美公司不进对比。")
             return 0
 
         if args.cmd == "init":
+            anchor_ticker = args.anchor_ticker
+            if anchor_ticker:
+                anchor_ticker = require_a_share_ticker(anchor_ticker, where=f"锚 {args.anchor}")
             group = create_group(
-                anchor=args.anchor, anchor_ticker=args.anchor_ticker,
+                anchor=args.anchor, anchor_ticker=anchor_ticker,
                 members=[parse_member(s) for s in args.member],
                 slug=args.slug, name=args.name, chain_note=args.chain_note, created=args.date,
             )
