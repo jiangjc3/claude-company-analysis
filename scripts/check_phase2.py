@@ -28,7 +28,10 @@ from pathlib import Path
 # 章节标题: ## §1 ... ## §8 (Phase 2 用阿拉伯数字, 与主报告的 §一-§八 区分)
 SECTION_RE = re.compile(r"^##\s+§\s*(\d)\b", re.MULTILINE)
 PDF_TAG = re.compile(r"[\[【]\s*PDF\s*[:：]", re.IGNORECASE)
-SOURCE_TAG = re.compile(r"[\[【]\s*(?:PDF|Tushare|metrics\.json|yfinance|WebSearch)\s*[:：]", re.IGNORECASE)
+SOURCE_TAG = re.compile(
+    r"[\[【]\s*(?:PDF|akshare|cninfo|sina|structured|metrics\.json|WebSearch|Tushare)\s*[:：]",
+    re.IGNORECASE,
+)
 
 REQUIRED_SECTIONS = [str(i) for i in range(1, 9)]   # §1..§8
 MIN_PDF_QUOTES_S2 = 3

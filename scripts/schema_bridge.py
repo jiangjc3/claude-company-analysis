@@ -459,13 +459,23 @@ def bridge_disclosure_date(df: pd.DataFrame, ts_code: str) -> pd.DataFrame:
             modify = r.get("二次变更")
         if pd.isna(modify):
             modify = r.get("初次变更")
+        pre_s = (
+            _ymd(pd.Series([pre])).iloc[0]
+            if pre is not None and not (isinstance(pre, float) and pd.isna(pre))
+            else None
+        )
         rows.append(
             {
                 "ts_code": ts_code,
                 "end_date": end,
-                "pre_date": _ymd(pd.Series([pre])).iloc[0] if pre is not None and not (isinstance(pre, float) and pd.isna(pre)) else None,
-                "actual_date": _ymd(pd.Series([actual])).iloc[0] if actual is not None and not (isinstance(actual, float) and pd.isna(actual)) else None,
-                "modify_date": _ymd(pd.Series([modify])).iloc[0] if modify is not None and not (isinstance(modify, float) and pd.isna(modify)) else None,
+                "pre_date": pre_s,
+                "pre_ann_date": pre_s,  # alias for older Tushare-shaped consumers / monitor
+                "actual_date": _ymd(pd.Series([actual])).iloc[0]
+                if actual is not None and not (isinstance(actual, float) and pd.isna(actual))
+                else None,
+                "modify_date": _ymd(pd.Series([modify])).iloc[0]
+                if modify is not None and not (isinstance(modify, float) and pd.isna(modify))
+                else None,
             }
         )
     return pd.DataFrame(rows)

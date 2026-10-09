@@ -1,173 +1,61 @@
-# 联网搜索策略（v3 - 辅助定位）
+# WebSearch 策略（A 股 · 免费多源）
 
-> **v3 重大调整**：本文件从 v1/v2 的"主数据源"降级为**辅助定位**工具。
-> 主数据源是 `scripts/tushare_collector.py` 和 `scripts/pdf_reader.py`，见 `phases/phase1-data-collection.md`。
+> 本文件只定义 **WebSearch / WebFetch** 的用法。  
+> 主数据源是 `scripts/a_share_collector.py`（akshare / 新浪 / 巨潮 providers）和 `scripts/pdf_reader.py`，见 `phases/phase1-data-collection.md`。  
+> WebSearch 是**补洞与舆情**工具，不是财报主路径。
 >
-> WebSearch 只用于：**舆情 / 新闻事件 / 行业背景 / PDF URL 定位**。
-> **禁止**用于关键财务数据（收入、利润、PE、PB、ROE 等）——这些必须来自 Tushare API 或 PDF 原文。
+> **禁止**用于关键财务数据（收入、利润、PE、PB、ROE 等）——这些必须来自 **结构化免费源**（`[akshare:…]` / `[sina:…]`）或 **PDF 原文**（`[PDF:…]` / `[cninfo:…]`）。
 
 ---
 
-## 时效性规则
+## 1. 公告与 PDF URL
 
-1. 所有查询附加时间限定词：`{YEAR}`, `latest`, `recent`, `最新`
-2. 来源新鲜度优先级：
-   - ≤ 6 个月：高置信度
-   - 6-12 个月：中置信度，需交叉验证
-   - > 12 个月：标记 `[历史数据: YYYY-MM]`，仅作背景参考
-3. 所有引用必须带 URL + 发表日期
+**A 股（主路径）**:
+
+1. 先读 `raw_data/anns.parquet`（cninfo provider）里的标题 + PDF URL  
+2. 仍缺时 WebSearch：`site:cninfo.com.cn {ticker} {company} {年}年年度报告 PDF`  
+3. 备用：`site:sse.com.cn` / `site:szse.cn` 交易所公告检索
+
+**不要**再走美股 SEC / 港股披露易——本 skill 仅 A 股。
 
 ---
 
-## 允许的用途
-
-### A. 定位 PDF 报告 URL（最重要）
-
-用 WebSearch 找到财报 PDF 的直接下载地址，然后交给 `pdf_reader.py` 处理。
-
-**A 股（巨潮资讯）**:
-```
-site:cninfo.com.cn "{company}" {ticker} 年度报告 {YEAR}
-site:cninfo.com.cn "{company}" 第三季度报告 {YEAR}
-site:cninfo.com.cn "{company}" 业绩预告 {YEAR}
-```
-
-**美股（SEC EDGAR）**:
-```
-site:sec.gov {ticker} 10-K {YEAR}
-site:sec.gov {ticker} 10-Q {YEAR}
-```
-
-**港股（披露易）**:
-```
-site:hkexnews.hk "{company}" annual report {YEAR}
-site:hkexnews.hk "{company}" interim report {YEAR}
-```
-
-### B. 社交媒体舆情（Phase 1 §8）
+## 2. 舆情与社区
 
 **A 股**:
-```
-site:xueqiu.com "{company}" {YEAR}
-site:eastmoney.com "{company}" 股吧
-site:zhihu.com "{company}" 投资
-"{company}" 研报 券商 目标价 {YEAR}
-```
 
-**美股**:
-```
-site:seekingalpha.com "{company}" {YEAR}
-site:reddit.com/r/investing "{ticker}"
-site:reddit.com/r/stocks "{ticker}"
-"{ticker}" analyst consensus price target {YEAR}
-```
+- 雪球 `site:xueqiu.com {company}`  
+- 东方财富股吧 / 研报摘要页（只采观点，不采财务数字）  
+- 近 12 月重大事项新闻（交易所问询、立案、回购、增减持）
 
-**港股**: 混合：xueqiu + aastocks + seekingalpha
-
-### C. 行业与宏观背景
-
-```
-"{industry}" 行业分析 市场规模 {YEAR}
-"{industry}" policy regulation {YEAR}
-"{industry}" CAGR 增速 {YEAR}
-"{company}" vs "{competitor}" 对比
-```
-
-### D. 突发新闻与重大事件
-
-```
-"{company}" 公告 {YEAR}
-"{company}" 并购 / 重组 / 分拆 {YEAR}
-"{company}" 诉讼 / 监管 / 处罚 {YEAR}
-"{company}" 业绩预告 / 业绩快报
-```
+看好 / 看衰各至少 3 条，写入 `sentiment.md`，带来源与日期。
 
 ---
 
-## 禁止的用途
+## 3. 严禁用 WebSearch 当财报源
 
-以下场景**严禁**使用 WebSearch 作为数据来源，必须走 Tushare API / PDF：
+| 数据 | 必须走 |
+|---|---|
+| 最近 3 年营收 / 净利 / 毛利率 | `a_share_collector` → income / fina_indicator + PDF 交叉 |
+| 当前 PE / PB / PS / 市值 | daily_basic（akshare）或本地推算 |
+| 资产负债 / 现金流任一科目 | balancesheet / cashflow parquet 或年报 PDF |
+| 前十大股东 | top10_holders + 定期报告 PDF |
+| 股权质押 | pledge_detail；空表分 `empty_genuine` vs `source_failed` |
+| 预约披露日 | C14 `disclosure_date` → `manifest --sync-disclosure-from` |
 
-| 场景 | 正确来源 |
-|------|---------|
-| 最近 3 年的营收 / 净利 / 毛利率 | `tushare_collector.income()` + `fina_indicator()` |
-| 当前 PE / PB / PS / 市值 | `tushare_collector.daily_basic()` |
-| 资产负债表任一科目 | `tushare_collector.balancesheet()` |
-| 现金流量表任一科目 | `tushare_collector.cashflow()` |
-| Q3 亏损的具体构成 | `pdf_reader.extract_sections()` → `income_statement_changes` |
-| 子公司/参股公司业绩 | `pdf_reader.extract_sections()` → `subsidiaries` |
-| 前十大股东 | `tushare_collector.top10_holders()` + PDF 交叉 |
-| 股权质押 | `tushare_collector.pledge_detail()` |
-
-**为什么禁止？**
-
-v1 的 Q3 亏损归因错误根因就是用 WebSearch 拿到了"证券之星简析"，被"三费占比上升"的简化叙事误导，完全错过了**超隆光电参股爆雷**这个真实主因（PDF Page 4 明确写着）。
-
-v3 的铁律是：**关键数据必须有可审计的原文锚点**。Tushare 给你结构化数字，PDF 给你"为什么变动"的管理层原文——两者不可替代。
+铁律：**关键数据必须有可审计锚点**。结构化源给数字，PDF 给「为什么变动」的管理层原文。
 
 ---
 
-## WebFetch 深度阅读（精选 3-5 份）
+## 4. 降级策略（结构化源 / PDF 失败时）
 
-从 WebSearch 结果中**精选** 3-5 个最有信息密度的页面做 WebFetch：
+1. 主源失败 → 备源（见改造方案字段簇矩阵）  
+2. 整簇失败 → provenance `source_failed` + `data_sources.md` 缺口；**禁止**写成「无此事」  
+3. 仅当结构化 + PDF 都不可用时，才允许 WebSearch 二手摘要，并在报告顶部标：
 
-**优先级 P1（必读）**:
-- 1-2 份近期高质量研报（券商深度分析）
-- 管理层最新一次电话会议 / 调研纪要
-
-**优先级 P2（选做）**:
-- 1-2 份代表性的多空辩论帖（雪球 / Reddit）
-- 1 份行业协会 / 咨询机构的年度报告
-
-**禁止 WebFetch**:
-- 财经网站的财务摘要页（如 `stockstar.com` / `eastmoney.com` 的"财务分析"页）——这些是二手数据，走 Tushare 就行
-- 算法生成的评级页面（如"证券之星评级"）
-
----
-
-## 查询模板速查
-
-### 创业公司（非上市）
-创业公司没有 Tushare / PDF，只能靠 WebSearch。参考 `phases/phase1-data-collection.md` §7 "创业公司模式"。
-
-### 条款 / 交易
 ```
-"{company}" Series {X} funding {YEAR}
-"{company}" valuation post-money pre-money
-"{company}" term sheet leak OR "liquidation preference"
-"{company}" down round OR up round {YEAR}
+⚠️ 数据降级: 本次未能使用结构化免费源 / PDF 原文，仅依赖 WebSearch 二手摘要。
+请核对网络与各站点可用性后重跑采集。
 ```
 
-### 团队背景
-```
-"{CEO name}" "{company}" LinkedIn
-"{founder name}" biography previous companies
-"{company}" executive team hiring firing {YEAR}
-```
-
-### 社交媒体监控（负面信号）
-```
-"{company}" controversy scandal lawsuit {YEAR}
-"{company}" former employee review glassdoor
-"{company}" 离职 负面 评价
-```
-
----
-
-## 降级策略（Tushare/PDF 失败时）
-
-若 Phase 1 Step 1-3（结构化数据 + PDF）失败：
-
-1. **记录失败原因**（积分不足？接口抖动？PDF URL 错误？）
-2. **通知用户**：告诉用户降级原因，征求是否继续
-3. **降级为 WebSearch 模式**，但 **Phase 1 生成的 phase1-data.md 必须在开头显式标注**：
-
-```markdown
-⚠️ **数据降级**: 本次采集未能使用 Tushare API / PDF 原文，仅依赖 WebSearch 二手摘要。
-   结论的置信度整体降低。建议:
-   - 核对 TUSHARE_TOKEN 是否有效（积分是否充足）
-   - 核对 PDF URL 是否正确
-   - 重跑 Phase 1
-```
-
-降级时所有关键数据打 `[WebSearch-降级: domain.com]` 标签，Phase 3 综合分至少 -0.5。
+创业公司 / 未上市管线已移除，不在本 skill 范围。

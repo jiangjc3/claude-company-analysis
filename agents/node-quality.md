@@ -153,7 +153,7 @@ panel:
 
 | 情况 | 处理 |
 |---|---|
-| 缺 peer_analysis.md(美股/港股常见) | 面板 `peer_percentile` 填 null,降级标注写明;不许编分位数 |
+| 缺 peer_analysis.md / peer 降级 | 面板 `peer_percentile` 填 null,降级标注写明;不许编分位数 |
 | audit_report.md 缺某框架结论 | 该子判定改用可得证据,写"不确定 + 缺什么";不许用假设数据填充 |
 | red_flags.json 不存在 | 所有 `red_flag_ref` 填 null + 降级标注(采集阶段漏跑 red_flags,回报主 agent) |
 | 关键证据缺失(如无 PDF 精析) | 相关子判定判"不确定"并写清缺口,把缺口带进响应的降级标注 |

@@ -4,7 +4,7 @@
 但之前 skill 只粗用了 top10_holders + stk_holdernumber 两个信号,
 完全没消费陆股通 / 两融 / 龙虎榜 / 大单资金流等控盘证据.
 
-本模块拉 6 个 Tushare 接口 (2000+ 积分门槛, 用户 5000 积分完全够) 并推导
+本模块经 P1 改走免费 providers（eastmoney_flow / governance）并推导
 6 个综合控盘指标, 生成 capital_flow.md.
 
 数据接口:

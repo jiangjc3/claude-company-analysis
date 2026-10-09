@@ -201,7 +201,7 @@ anchor_range:
 | 情况 | 处理 |
 |---|---|
 | 单一业务公司,SOTP 无意义 | 低端改用保守可比倍数法并在 `method` 写明(如"可比倍数保守口径"),不许两端同法 |
-| 缺 peer_analysis(美股/港股) | 用 Damodaran 基准表 + 手册 §4 校准,`mechanism` 写明基准来源,记降级标注 |
+| 缺 peer_analysis | 用 Damodaran 基准表 + 手册 §4 校准,`mechanism` 写明基准来源,记降级标注 |
 | 亏损公司无 PE 锚 | 改用 EV/Revenue、EV/EBITDA 或 NPV 口径,写明为什么换尺子 |
 | 现价拿不到 | `current_price` 省略,决断卡赔率行只显示合理价区间;降级标注写明 |
 | schema 3 轮仍红 | 判定 FAIL,把最后一次报错原样带回主 agent |

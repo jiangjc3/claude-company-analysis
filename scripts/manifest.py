@@ -12,9 +12,11 @@ run 目录内固定子目录:
 采集产物(raw_data/ / pdfs/ / data_snapshot.md …)落**公司级** `output/{company}/`, 跨 run 共享,
 不在 run 目录内复制一份(= `{artifacts_dir}`, 见 references/phase-orchestration.md 目录结构约定)。
 
-CLI(查状态 / 手工登记预约披露日, A 股由 tushare_collector 自动写):
+CLI(查状态 / 手工登记预约披露日; A 股由 a_share_collector / --sync-disclosure-from 自动写):
   python -m scripts.manifest --company-dir output/东山精密 --show
-  python -m scripts.manifest --company-dir output/Apple --set-next-disclosure 2026-10-29
+  python -m scripts.manifest --company-dir output/贵州茅台 --set-next-disclosure 2026-10-29
+  python -m scripts.manifest --company-dir output/贵州茅台 \\
+      --sync-disclosure-from output/贵州茅台/raw_data/disclosure_date.parquet
 """
 from __future__ import annotations
 import sys
@@ -114,7 +116,8 @@ def latest_run(company_dir: Path) -> dict | None:
 
 # ---------- 下次预约披露日(报告头部与主页卡片的「该什么时候回来看」)----------
 
-# Tushare disclosure_date 的列名按修订优先级排(modify_date 覆盖 pre_ann_date);
+# C14 disclosure_date 列名按修订优先级排(modify_date 覆盖 pre_ann_date / pre_date);
+# schema_bridge 产出 pre_date / modify_date / actual_date; 旧 Tushare 形也认 pre_ann_date / ann_date。
 # 列名不认识就返回 None —— 宁可留空, 不猜日期。
 DISCLOSURE_DATE_COLUMNS = ("modify_date", "pre_ann_date", "pre_date", "ann_date")
 
@@ -139,6 +142,20 @@ def nearest_future_disclosure(
     return None
 
 
+def nearest_future_disclosure_from_df(df, today: str | None = None) -> str | None:
+    """pandas DataFrame → nearest_future_disclosure(records)。空表 / 无可用列 → None。"""
+    if df is None:
+        return None
+    try:
+        empty = df.empty  # type: ignore[attr-defined]
+    except Exception:
+        return None
+    if empty:
+        return None
+    records = df.to_dict("records")
+    return nearest_future_disclosure(records, today=today)
+
+
 def set_next_disclosure(company_dir: Path, date: str | None) -> bool:
     """把预约披露日写进 manifest; 无 manifest(还没 init_run)或日期为空则不动, 返回是否写了。"""
     m = load(company_dir)
@@ -149,6 +166,29 @@ def set_next_disclosure(company_dir: Path, date: str | None) -> bool:
     m["next_disclosure_date"] = date
     save(company_dir, m)
     return True
+
+
+def sync_disclosure_from_parquet(
+    company_dir: Path, parquet_path: Path, today: str | None = None
+) -> tuple[str | None, bool]:
+    """从 C14 disclosure_date.parquet 同步 next_disclosure_date 到 manifest。
+
+    返回 (picked_date | None, changed)。缺文件 / 空表 / 无未来日 → (None, False)。
+    供 `--review` R1 与全量 Phase 1 在采集后门控调用(P2 硬化)。
+    """
+    path = Path(parquet_path)
+    if not path.exists():
+        return None, False
+    try:
+        import pandas as pd
+
+        df = pd.read_parquet(path)
+    except Exception:
+        return None, False
+    picked = nearest_future_disclosure_from_df(df, today=today)
+    if not picked:
+        return None, False
+    return picked, set_next_disclosure(company_dir, picked)
 
 
 # ---------- 对比组归属(票 10 --compare 的成员登记)----------
@@ -195,7 +235,12 @@ def main() -> int:
     ap.add_argument(
         "--set-next-disclosure",
         metavar="YYYY-MM-DD",
-        help="登记下次预约披露日(美股/港股手工填; A 股由 tushare_collector 自动写)",
+        help="手工登记下次预约披露日(通常不必; A 股用 --sync-disclosure-from)",
+    )
+    ap.add_argument(
+        "--sync-disclosure-from",
+        metavar="PARQUET",
+        help="从 C14 disclosure_date.parquet 同步 next_disclosure_date(--review / Phase 1)",
     )
     args = ap.parse_args()
 
@@ -206,7 +251,21 @@ def main() -> int:
     if args.set_next_disclosure:
         changed = set_next_disclosure(company_dir, args.set_next_disclosure)
         print(("✅ 已登记" if changed else "· 未变化") + f" next_disclosure_date={args.set_next_disclosure}")
-    if args.show or not args.set_next_disclosure:
+    if args.sync_disclosure_from:
+        picked, changed = sync_disclosure_from_parquet(
+            company_dir, Path(args.sync_disclosure_from)
+        )
+        if picked:
+            print(
+                ("✅ 已同步" if changed else "· 未变化")
+                + f" next_disclosure_date={picked} ← {args.sync_disclosure_from}"
+            )
+        else:
+            print(
+                f"⚠️ 未从 {args.sync_disclosure_from} 解析到未来预约披露日"
+                "（空表/源失败/无未来行 — 记入 data_sources 缺口,勿伪装成无披露）"
+            )
+    if args.show or not (args.set_next_disclosure or args.sync_disclosure_from):
         print(json.dumps(load(company_dir), ensure_ascii=False, indent=2))
     return 0
 

@@ -299,7 +299,7 @@ def _render_section_2(bundle_dir: Path, latest_periods: dict, out: StringIO):
             yoy = _fmt_yoy(curr_v, prev_v) if (curr_v is not None and prev_v is not None) else "–"
             out.write(f"| {label} | {_fmt_value(curr_v, unit)} | {_fmt_value(prev_v, unit)} | {yoy} |\n")
         out.write(
-            "\n> 口径提示:「自由现金流(数据商口径)」是 Tushare `cashflow.free_cashflow` 字段;"
+            "\n> 口径提示:「自由现金流(数据商口径)」是 bundle `cashflow.free_cashflow` 字段;"
             "`metrics.json` 里的 `free_cashflow_latest` 是**经营现金流 − 购建固定资产支付的现金**自算的。"
             "两者常差一截(华特 2026H1:0.12 亿 vs 0.67 亿),引用时写明用的是哪一个。\n"
         )
@@ -637,7 +637,7 @@ def _render_section_9(bundle_dir: Path, out: StringIO):
     out.write("## §9 限售股解禁日历 (未来 12 个月) ★ v5.1.2 新增\n\n")
     df = _read_parquet_safe(bundle_dir / "share_float.parquet")
     if df.empty:
-        out.write("(无解禁数据,可能是该公司近 12 月无解禁,或 Tushare 接口未返回)\n\n")
+        out.write("(无解禁数据,可能是该公司近 12 月无解禁,或解禁源未返回)\n\n")
         return
 
     # 按解禁日期升序
@@ -696,8 +696,8 @@ def build_snapshot(bundle_dir: Path, ts_code: str = "", company: str = "") -> st
     today = dt.date.today().strftime("%Y-%m-%d")
     out.write(f"# 数据快照: {company or 'company'} ({ts_code or 'ticker'})\n\n")
     out.write(f"**生成日期**: {today}\n")
-    out.write(f"**数据源**: `{bundle_dir}` (Tushare parquet)\n\n")
-    out.write("> 本文是报告**附录A 财务与经营明细**的底稿, 全部由脚本从 Tushare parquet 直接拼装, "
+    out.write(f"**数据源**: `{bundle_dir}` (A-share free-source parquet)\n\n")
+    out.write("> 本文是报告**附录A 财务与经营明细**的底稿, 全部由脚本从免费多源 parquet 直接拼装, "
               "无 LLM 参与。正文只写结论并引用这里的数字, 明细一律留在附录 —— 同一个数字只有一个家。\n\n")
     out.write("---\n\n")
 

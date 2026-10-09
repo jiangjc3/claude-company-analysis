@@ -5,11 +5,11 @@
 它会自己去拉财报数据、下载并精读年报原文、跑完会计审计框架，然后把结论收敛成一张五行决断卡：
 **是不是好公司 / 在变好吗 / 贵不贵 / 扛得住吗 / 现在该怎么办**。
 
-**本分支（P0+P1 改造）仅支持 A 股**，数据采集改为 **akshare / 新浪 / 巨潮等免费多源**，**不再需要 Tushare token**。P1 已接治理簇（股东/质押/预告/解禁/大宗等）、资金流与同业；空表带 provenance，禁止把源失败写成「无异动」。报告全程说人话，每个关键数字都能回到出处。
+**本 fork（P0–P2）仅支持 A 股**，数据采集为 **akshare / 新浪 / 巨潮等免费多源**，**不需要 Tushare token**。P2 裁剪 SKILL/agents 产品措辞、硬化 `--review` 披露日历同步，并用东山 fixture 贯通装配 → `lint_v8` → HTML。报告全程说人话，每个关键数字都能回到出处。
 
 <p align="center">
-  <a href="https://github.com/leafpaper/claude-company-analysis/actions/workflows/tests.yml"><img src="https://github.com/leafpaper/claude-company-analysis/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
-  <img src="https://img.shields.io/badge/version-v8.10--p1-blue" alt="version">
+  <a href="https://github.com/jiangjc3/claude-company-analysis/actions/workflows/tests.yml"><img src="https://github.com/jiangjc3/claude-company-analysis/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
+  <img src="https://img.shields.io/badge/version-v8.10--p2-blue" alt="version">
   <img src="https://img.shields.io/badge/markets-A%E8%82%A1%20only-green" alt="markets">
   <img src="https://img.shields.io/badge/data-akshare%20%7C%20sina%20%7C%20cninfo-orange" alt="data">
   <img src="https://img.shields.io/badge/gate-lint%2018%20%2B%202%20reviewer-red" alt="gate">
@@ -251,6 +251,9 @@ Phase 6  质量环    lint_v8 18 条 → reviewer-logic ∥ reviewer-delivery �
 
 | 版本 | 关键变化 |
 |---|---|
+| **v8.10-p2** | Agents/SKILL 仅 A 股措辞；`--review` C14 披露日历同步；东山 fixture → md+lint+HTML |
+| **v8.10-p1** | 治理/资金流/peer 免费源 + provenance 空表语义 |
+| **v8.10-p0** | 去 Tushare；`a_share_collector` + providers 门面 |
 | **v8.10** | 首个轻资产订阅制样本（金山办公）打出 5 个采集缺陷 + 6 条流水线修补：PDF 把交叉引用当正文、新红旗「投资收益占营业利润过高」、合同负债藏在其他非流动负债里、lint 新增 R18、附录C 不再替⑤发号施令 |
 | **v8.9** | R17 已兑现倍数不超增长退出；技术面并入附录C；红旗 id 归一化（数据刷新不再制造假变化） |
 | **v8.5** | 首页判断卡嵌套链接被浏览器拆成九张（线上报告实测）；R15 三元组同源 / R16 价格区间引用过期 |
@@ -265,19 +268,19 @@ Phase 6  质量环    lint_v8 18 条 → reviewer-logic ∥ reviewer-delivery �
 **本项目是研究工具，不是投资建议。**
 
 它输出的判定、行动档位与仓位，是一套公开方法在公开数据上的推演结果，**不构成任何证券的买卖建议**。
-报告里的数字来自 Tushare / yfinance 与上市公司公开披露，可能存在采集口径差异、数据滞后或抽取错误；
+报告里的数字来自免费多源结构化接口与上市公司公开披露（巨潮 PDF 等），可能存在采集口径差异、数据滞后或抽取错误；
 由大模型生成的判断同样可能出错——报告里所有「信息缺口」与「降级标注」就是为了让你看见它哪里没把握。
 
 **据此做出的任何投资决策，风险由你自己承担。** 真要下注之前，请自己回原始公告核对一遍。
 
-数据来源（P0）：[AkShare](https://github.com/akfamily/akshare)（东财等公开接口封装）、新浪财经 K 线、
-巨潮资讯 / 交易所公开披露 PDF 与公告；遵守各站点服务条款。研究用途，非再分发行情馈送。
+数据来源：[AkShare](https://github.com/akfamily/akshare)（东财等公开接口封装）、新浪财经 K 线、
+巨潮资讯 / 交易所公开披露 PDF 与公告；遵守各站点服务条款。研究用途，非再分发行情馈送。**无 Tushare / yfinance 产品依赖。**
 
 ---
 
 ## 贡献
 
-欢迎 issue / PR。重点方向：更多审计框架、更多市场（日股 / 欧股）、机构持仓数据源。
+欢迎 issue / PR。重点方向：更多审计框架、更稳的免费资金流/高管薪酬源、北交所覆盖。
 
 改代码前先跑一遍测试：
 
