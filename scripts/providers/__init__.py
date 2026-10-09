@@ -1,4 +1,4 @@
-"""Free multi-source A-share data providers (P0: no Tushare)."""
+"""Free multi-source A-share data providers (P0+P1: no Tushare)."""
 
 from .base import ClusterResult, Provenance, SourceStatus
 

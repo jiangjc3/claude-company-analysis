@@ -4,6 +4,26 @@
 
 ---
 
+## [v8.10-p1] — 2026-10-09 — 治理簇 / 资金流 / Peer（免费多源）
+
+**Added**
+
+- P1 providers: `governance.py`（股东/户数/质押/回购/预告快报/分红/披露日历/解禁/大宗）、`eastmoney_flow.py`（资金流/陆股通/两融/龙虎榜）、`peer_universe.py`
+- `a_share_collector` 写入 `data_sources.md`；空表语义 `ok | empty_genuine | source_failed | partial | deferred` 贯穿 capital_flow / block_trade / pledge
+- 单测 `scripts/tests/test_a_share_p1.py`；可选 `CA_NETWORK_TESTS=1` 烟测
+
+**Changed**
+
+- `capital_flow` / `peer_collector` 改走免费 providers（不再 Tushare / P0 deferred stub）
+- `--peer-codes` 不依赖全市场 spot；EM 估值不可用时 sina close 占位并标 `partial`
+- `stk_managers` / `stk_rewards` / `top_inst` 无稳免费单票源时显式 `deferred`/`partial`（禁止静默当「无高管/无席位」）
+
+**Deferred to P2**
+
+- SKILL/README 全文去 Tushare 措辞与写手手册出处改写；全量 Phase 2–6 HTML；`--review` 披露日历接线硬化
+
+---
+
 ## [v8.10-p0] — 2026-10-09 — A 股免费多源采集（去 Tushare）
 
 **Changed**
