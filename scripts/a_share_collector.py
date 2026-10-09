@@ -187,12 +187,30 @@ def resolve_ticker(code_or_name: str, name_hint: str | None = None) -> tuple[str
     return code, basic.df
 
 
+def sync_manifest_disclosure(company_dir: Path, raw_data_dir: Path) -> dict[str, Any]:
+    """P2: push C14 nearest future date into company manifest (for --review / report stamp)."""
+    from . import manifest as manifest_mod
+
+    disc_path = Path(raw_data_dir) / "disclosure_date.parquet"
+    picked, changed = manifest_mod.sync_disclosure_from_parquet(Path(company_dir), disc_path)
+    return {
+        "next_disclosure_date": picked,
+        "manifest_updated": changed,
+        "source": str(disc_path) if disc_path.exists() else None,
+    }
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser(description="A-share free multi-source collector (P0+P1)")
+    ap = argparse.ArgumentParser(description="A-share free multi-source collector (P0–P2)")
     ap.add_argument("code", help="A-share code e.g. 600519.SH / 600519")
     ap.add_argument("--name", default="", help="company name hint")
     ap.add_argument("--start-year", type=int, default=2022)
     ap.add_argument("--out", default="", help="output raw_data dir")
+    ap.add_argument(
+        "--company-dir",
+        default="",
+        help="optional output/{company}/ — sync next_disclosure_date into manifest.json (P2)",
+    )
     args = ap.parse_args()
 
     try:
@@ -210,9 +228,27 @@ def main() -> int:
         bundle["stock_basic"].loc[:, "name"] = args.name
     save_bundle(bundle, out, provenance=prov)
     ok_gate, problems = c.core_gate(prov)
-    print(json.dumps({"core_ok": ok_gate, "problems": problems, "out": str(out)}, ensure_ascii=False, indent=2))
+
+    company_dir = Path(args.company_dir) if args.company_dir else out.parent
+    disclosure_sync: dict[str, Any] = {}
+    from . import manifest as manifest_mod
+
+    if manifest_mod.load(company_dir) is not None:
+        disclosure_sync = sync_manifest_disclosure(company_dir, out)
+        print(
+            f"disclosure sync: next={disclosure_sync.get('next_disclosure_date')} "
+            f"updated={disclosure_sync.get('manifest_updated')}"
+        )
+
+    payload = {
+        "core_ok": ok_gate,
+        "problems": problems,
+        "out": str(out),
+        "disclosure": disclosure_sync,
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
     (out / "_core_gate.json").write_text(
-        json.dumps({"core_ok": ok_gate, "problems": problems}, ensure_ascii=False, indent=2),
+        json.dumps({"core_ok": ok_gate, "problems": problems, "disclosure": disclosure_sync}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     return 0 if ok_gate else 1

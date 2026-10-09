@@ -225,7 +225,7 @@ Windows 如 `C:\Inves-Report`);下面写法为 Mac/Linux,Windows 把 `mkdir -p`�
 | D.2 | WebFetch 公司官网 IR / 投资者关系页 | 官方口径,二手转述之上 |
 | D.3 | `{PYBIN} -m scripts.pdf_reader {pdf} --search "{关键词正则}"` | 已下载 PDF 的全文命中 |
 | D.4 | WebSearch `site:cninfo.com.cn` / `site:sse.com.cn` / `site:sec.gov` + 关键词 | 事件性信息 |
-| D.5 | Tushare 结构化接口(`fina_mainbz` / `stk_rewards` / `stk_managers` / `top10_holders` / `forecast_vip` …) | 结构化兜底,对事件性信息覆盖差,放最后 |
+| D.5 | 结构化免费源(`fina_mainbz` / `stk_rewards` / `stk_managers` / `top10_holders` / `forecast_vip` …；部分簇可能 `deferred`) | 结构化兜底,对事件性信息覆盖差,放最后 |
 
 **判定分档**:✅ 直接回答了缺口 / ⚠️ 只找到相关上下文或代理指标 / ❌ 空手 / ⏭️ 明确不适用。
 整体状态:至少 1 步 ✅ 且交叉验证 = **已解决**;有 ⚠️ 其余 ❌ = **部分解决**(必须写「还需要什么数据才能升级」);

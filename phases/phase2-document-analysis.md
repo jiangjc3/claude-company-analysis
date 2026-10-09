@@ -114,7 +114,7 @@ Glob(pattern="output/{company}/raw_data/pdf_sections_*.json")
 
 ### 2.6 `top10_holders`（前十大股东）
 
-**用途**: 交叉验证 Tushare 数据。若 PDF 列出股东的"质押"/"冻结"状态，这比 Tushare 的 pledge_detail 更即时。
+**用途**: 交叉验证结构化免费源。若 PDF 列出股东的"质押"/"冻结"状态，这比 `pledge_detail` parquet 更即时。
 
 ---
 

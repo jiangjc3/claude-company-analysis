@@ -22,12 +22,12 @@ argument-hint: <company-name>
 
 ### ❌ 你不做的事
 
-- ❌ **不直接** 跑 Tushare 采集(那是 data-collector 的事)
+- ❌ **不直接** 跑 A 股采集(那是 data-collector 的事;`a_share_collector` + providers)
 - ❌ **不自跑** Phase 2 文档精析 / 不读 PDF 与 `pdf_sections_*.json`(那是 doc-analyst 的事)
 - ❌ **不写** 任何判断:五个节点的 verdict 与正文归五个写手,**你连它们的 YAML 块都不许手改**(要改就 fresh-restart 写手)
 - ❌ **不手写** 首页决断卡 / 面板 / Top3 / 附录(机器装配,零人工抄写)
 - ❌ **不读** sub-agent 响应全文
-- ❌ **不在响应里** 粘贴 Bash stdout / Tushare DataFrame / WebSearch 完整结果
+- ❌ **不在响应里** 粘贴 Bash stdout / DataFrame / WebSearch 完整结果
 - ❌ **不尝试 `Agent(resume=...)`** — 该参数**不存在**,会被忽略 → sub-agent 起新实例丢上下文。修正循环用 fresh-restart + 把上轮 FIX 注入新 prompt
 
 ---
@@ -101,15 +101,16 @@ Agent(subagent_type="X", prompt="...", run_in_background=True/False, description
 {PYBIN} -m scripts.check_env
 ```
 
-通过标准:依赖全部 `[OK]`(含 `akshare`)。**不再检查 TUSHARE_TOKEN**(P0 已移除)。失败 → 给用户修复命令,停止。本 skill **仅 A 股**。
+通过标准:依赖全部 `[OK]`(含 `akshare`)。**不需要任何付费数据 token**。失败 → 给用户修复命令,停止。本 skill **仅 A 股**。
 
 ---
 
 ## Step 1: 解析输入
 
-向用户确认:市场(A股/美股/港股)/ 股票代码 / 内部资料(可选)/ 投资金额(默认 100 万)/ 特别关注(可选)。
+向用户确认:**A 股**股票代码 / 公司名 / 内部资料(可选)/ 投资金额(默认 100 万)/ 特别关注(可选)。
+若用户提到美股/港股 → 告知本 skill 仅 A 股,请换标的或改用其他工具。
 
-锁定 `{company}` / `{market}` / `{ticker}` / `{documents}` / `{amount}` / `{focus_points}`。
+锁定 `{company}` / `{market}=A股` / `{ticker}` / `{documents}` / `{amount}` / `{focus_points}`。
 
 > 本 skill **只分析上市公司**——创业公司口径(C/D 轮评分、条款分析、实物期权、退出瀑布)已随 v8 框架文档重组移除,不再询问类型。
 >
@@ -196,7 +197,7 @@ Phase 1 (data-collector) → Phase 2 (doc-analyst)
 
 | 情况 | 处理 |
 |---|---|
-| Step 0 环境失败 | 停止 + 给修复命令(装依赖 `{PYBIN} -m pip install --user -r scripts/requirements.txt`)；无需 Tushare token |
+| Step 0 环境失败 | 停止 + 给修复命令(装依赖 `{PYBIN} -m pip install --user -r scripts/requirements.txt`) |
 | Step 2 `RunExists` | 同日期已有 run:确认重跑意图后清理旧目录,或用次日日期 |
 | Step 2 增量退出码 3(硬规则 1) | 基线不是 v8 结构 → 告知用户后改跑 `--run-type full` 全量 |
 | `triage` 退出码 2 | 缺基线快照(没跑 init_run incremental / R1 未完成)→ 按 review-pipeline.md 顺序补 |

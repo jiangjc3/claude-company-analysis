@@ -16,7 +16,7 @@ echo "  Claude Code — 投资分析 Skill 安装程序 v8.5"
 echo "  结构化数据 + PDF 精析 + 11 大师框架审计"
 echo "  v8.0: 判断链五节点(质地/状态/赔率/路径/怎么办) + 依赖图两波调度"
 echo "        首页一眼决断与附录全部机器装配"
-echo "  支持 A 股 / 美股 / 港股"
+echo "  仅 A 股 · 免费多源（无 Tushare）"
 echo "================================================"
 echo ""
 
@@ -113,9 +113,6 @@ for py in \
     codes \
     a_share_collector \
     schema_bridge \
-    tushare_collector \
-    us_collector \
-    hk_collector \
     legacy_quote \
     pdf_reader \
     data_snapshot \
@@ -142,9 +139,9 @@ for py in \
 done
 curl -fsSL "$REPO_URL/scripts/requirements.txt" -o "$SKILL_DIR/scripts/requirements.txt"
 curl -fsSL "$REPO_URL/scripts/README.md" -o "$SKILL_DIR/scripts/README.md"
-# P0 providers / merge
+# P0–P2 providers / merge
 mkdir -p "$SKILL_DIR/scripts/providers" "$SKILL_DIR/scripts/merge"
-for py in base sina_quote akshare_fundamentals cninfo __init__; do
+for py in base sina_quote akshare_fundamentals cninfo governance eastmoney_flow peer_universe __init__; do
   curl -fsSL "$REPO_URL/scripts/providers/${py}.py" -o "$SKILL_DIR/scripts/providers/${py}.py" || true
 done
 for py in rules __init__; do
@@ -198,7 +195,7 @@ SCHEMA_COUNT=$(find "$SKILL_DIR/scripts/schemas" -name "*.schema.json" 2>/dev/nu
 if [ "$PHASE_COUNT" -eq "6" ] && [ "$AGENT_COUNT" -eq "10" ] && [ "$REF_COUNT" -eq "9" ] && [ "$SCRIPT_COUNT" -ge "33" ] && [ "$ASSETS_COUNT" -eq "6" ] && [ "$SCHEMA_COUNT" -eq "15" ]; then
     echo ""
     echo "============================================"
-    echo "  ✅ 安装成功！(v8.10-p0 A-share free sources)"
+    echo "  ✅ 安装成功！(v8.10-p2 A-share free sources)"
     echo "============================================"
     echo ""
     echo "  协调器:  SKILL.md"
@@ -211,7 +208,7 @@ if [ "$PHASE_COUNT" -eq "6" ] && [ "$AGENT_COUNT" -eq "10" ] && [ "$REF_COUNT" -
     echo "  输出目录: ~/投资报告/"
     echo ""
     echo "============================================"
-    echo "  下一步（P0: 仅 A 股，无需 Tushare）"
+    echo "  下一步（仅 A 股，无需 Tushare token）"
     echo "============================================"
     echo ""
     echo "  1. 安装 Python 依赖:"

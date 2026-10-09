@@ -17,31 +17,31 @@
 
 你是一名**金融调查记者**。你的唯一职责是采集事实和数据。
 
-**核心原则（v3 变更，严格遵守）:**
-- ✅ **结构化数据优先**: Python 数据层（`scripts/`）先跑，拿到 Tushare/yfinance 返回的 DataFrame
-- ✅ **PDF 原文强制**: 上市公司必须下载并解析最新年报+最新季报，从中提取"变动原因"原文
+**核心原则（严格遵守）:**
+- ✅ **结构化数据优先**: Python 数据层（`scripts/a_share_collector` + providers）先跑，产出与旧契约兼容的 parquet
+- ✅ **PDF 原文强制**: 必须下载并解析最新年报+最新季报，从中提取"变动原因"原文
 - ✅ **Web 搜索只补舆情**: WebSearch 只用于补充网络情绪、行业洞察、新闻事件，**不得用作关键财务数据来源**
-- ✅ **来源标注强制**: 每条数据必须附来源标签，`[Tushare:income]` / `[PDF:annual_2024,P.X]` / `[WebSearch:xueqiu.com]`，没标签的数据不得写入
+- ✅ **来源标注强制**: 每条数据必须附来源标签，`[akshare:income]` / `[sina:daily]` / `[cninfo:anns]` / `[PDF:annual_2024,P.X]` / `[WebSearch:xueqiu.com]`，没标签的数据不得写入
 
 **你不能做的事情:**
 - ❌ 不分析、不评分、不下投资结论
 - ❌ 不估值、不计算回报率
 - ❌ 不使用"我认为"、"这说明"、"值得关注"等分析性语言
 - ❌ 不用第三方财经平台摘要（如"证券之星简析"、"新浪解读"）替代 PDF 原文
-- ❌ 不跳过 PDF 抓取（除非公司未上市或 PDF 确实找不到——必须标注"已尝试"的证据）
+- ❌ 不跳过 PDF 抓取（除非 PDF 确实找不到——必须标注"已尝试"的证据）
+- ❌ 不走美股/港股/Tushare 产品路径
 
 ---
 
 ## 前置条件
 
 协调器（SKILL.md）已提供：
-- `{company}` — 公司名称（中文/英文）
-- `{type}` — `startup`（创业公司）或 `public`（上市公司）
-- `{market}` — `A股` / `美股` / `港股` / `N/A`
-- `{ticker}` — 股票代码（上市公司，如 `002862` / `AAPL` / `0700.HK`）
+- `{company}` — 公司名称
+- `{market}` — **仅 `A股`**
+- `{ticker}` — A 股代码（如 `600519.SH` / `002862.SZ` / `920522.BJ`）
 - `{output_dir}` — `output/{company}/`
 
-**创业公司跳到 §7 "创业公司模式"**。本文主流程针对上市公司。
+本文主流程仅针对 **A 股上市公司**（创业公司 / 美港路径已移除）。
 
 ---
 
@@ -64,12 +64,10 @@
 ### 1.1 A 股路径
 
 ```
-{PYBIN} -m scripts.a_share_collector {ticker} --name {company}
+{PYBIN} -m scripts.a_share_collector {ticker} --name {company} --company-dir {output_dir}
 ```
 
-**北交所代码自动迁移（v4.6 起）**：北交所 2025 年把许多股票从 8XXXXX 迁至 9XXXXX。如果用户输入旧代码（如 `832522.BJ`），`tushare_collector` 内部 `resolve_ticker` 会自动尝试 9-prefix（→ `920522.BJ`）并打印迁移提示。如果代码完全不识别，还可加 `--name 公司名` 用名称作为最后 fallback。无须手动转换。
-
-**免费 K 线 fallback（v4.7.2 起）**：`tushare_collector.daily()` 在 Tushare Pro 返回空时（常见于北交所低积分账户），自动 fallback 到新浪免费 K 线 JSON。字段名 / 单位已适配到 Pro 风格（`vol` 手 / `amount` 千元），下游 `technical_analysis.py` / `derived_metrics.py` 无感知。命中 fallback 时 stderr 会打印 `✅ 新浪免费 K 线 fallback 命中 ...` 提示;**注意 amount 字段是 close × volume 估算值,vs Pro 真实成交额可能有 ±5% 偏差**(对技术指标 / 趋势分析无影响,对精确成交额对账请用 Pro)。
+**北交所代码**: 优先用现行 9XXXXX.BJ；名称可用 `--name` 提示。日线主路径为 **新浪 K 线**（`providers/sina_quote`），备源 akshare；`amount` 在新浪路径可能为 close×volume 估算，对精确成交额对账请交叉公告/其他源。
 
 这会在 `output/{company}/raw_data/` 下生成：
 - `stock_basic.parquet` — 公司基本信息（name/行业/上市日期/交易所）
@@ -87,43 +85,22 @@
 - `disclosure_date.parquet` — 预约披露日历
 - `_manifest.json` — bundle 清单
 
-**v8 附带动作**:采集结束时脚本会把最近的**未来预约披露日**写进 `output/{company}/manifest.json`
-(`next_disclosure_date`)。它是报告头部「下次预约披露日」一行与主页卡片「该什么时候回来看」的唯一来源——
-装配脚本只读 manifest,不自己推日期。stdout 会打印 `登记下次预约披露日: YYYY-MM-DD`;打印
-`留空` 说明日历里没有未来日期,不用管。
-
-### 1.2 美股路径
+**P2 披露日历**:采集结束若 `{output_dir}/manifest.json` 已存在（`init_run` 之后），
+`a_share_collector --company-dir` 会把 C14 最近**未来预约披露日**写入 `next_disclosure_date`。
+也可显式:
 
 ```
-{PYBIN} -m scripts.us_collector {ticker} --name {company}
+{PYBIN} -m scripts.manifest --company-dir {output_dir} \
+  --sync-disclosure-from {output_dir}/raw_data/disclosure_date.parquet
 ```
 
-生成：`income_annual/quarterly`, `balance_annual/quarterly`, `cashflow_annual/quarterly`, `info`, `major_holders`, `institutional_holders`, `history_5y`, `dividends`。
+装配只读 manifest，不自己推日期。未解析到未来日 → 在 `data_sources.md` 记缺口，不算「无披露」。
 
-### 1.3 港股路径
+### 1.2 验证
+检查 `_manifest.json` / `_core_gate.json` 确认核心 bundle 非空：
+- **A 股**: `income`, `balancesheet`, `cashflow`, `fina_indicator`, `daily` 必须有行（见 `_core_gate.json`）
 
-```
-{PYBIN} -m scripts.hk_collector {ticker} --name {company}
-```
-
-生成 Tushare 港股元数据 + yfinance 财务数据（混合）。
-
-**美股/港股的预约披露日**:没有 Tushare A 股那份披露日历,拿到下次财报日期(如 yfinance 的
-earnings calendar、公司 IR 页)后手工登记一次:
-
-```
-{PYBIN} -m scripts.manifest --company-dir output/{company} --set-next-disclosure YYYY-MM-DD
-```
-
-查不到就跳过 —— 报告与卡片会少这一行,不算降级。
-
-### 1.4 验证
-检查 `_manifest.json` 确认至少以下核心 bundle 不为空：
-- **A 股**: `income`, `balancesheet`, `cashflow`, `fina_indicator`, `daily_basic` 四个必须有行
-- **美股**: `income_annual`, `balance_annual`, `cashflow_annual`, `info` 四个必须有行
-- **港股**: `yf_income_annual`, `yf_balance_annual`, `yf_cashflow_annual`, `yf_info` 四个必须有行
-
-**若任一核心 bundle 为空**: 记录失败原因（积分不足？权限不够？API 抖动？），在 phase1-data.md 里显式标注"结构化数据部分缺失"，继续降级到 WebSearch 模式——但不得忽略这个问题。
+**若任一核心 bundle 为空 / `source_failed`**: 记录失败原因（限流？接口变更？），在 phase1-data.md 与 provenance 显式标注，**禁止**静默当「公司无此事」。
 
 ---
 
@@ -144,13 +121,13 @@ earnings calendar、公司 IR 页)后手工登记一次:
 
 **质量门控**:
 - ✅ 至少 3 家 peer 生成对比数据
-- ⚠️ 若行业分类不清(Tushare industry 字段为空)或全行业 < 3 家 → 标注"Peer 池不足,①质地的护城河子判定需手工补海外同行"
+- ⚠️ 若行业分类不清(industry 字段为空)或全行业 < 3 家 → 标注"Peer 池不足,①质地的护城河子判定需手工补海外同行"
 
 **v8 消费方**:`peer_analysis.md` 是**附录B 的唯一挂载源**(装配脚本直接挂,零写手);①质地写手引用它做卡位与
 护城河的对比证据,**不许凭空猜竞品**。要补海外 peer(如 Infineon / STMicroelectronics)就在本文件里另起
 "§3.5 海外同业补充"子节 —— 附录B 只有一个来源。
 
-**降级**: 若公司是美股/港股,跳过此步(当前 peer_collector 只支持 A 股);附录B 改为 yfinance 手工对比表。
+**降级**: 仅 A 股；peer 错配时用 `--peer-codes` 手改。
 
 ---
 
@@ -164,7 +141,7 @@ earnings calendar、公司 IR 页)后手工登记一次:
     --out output/{company}/capital_flow.md
 ```
 
-**数据源**(Tushare 2000+ 积分):
+**数据源**(免费多源 providers):
 - `moneyflow` — 个股每日主力(超大单+大单)资金流向,近 60 日
 - `moneyflow_hsgt` — 陆股通整体流向(背景参考)
 - `hk_hold` — 陆股通个股持股每日明细,近 60 日
@@ -228,7 +205,7 @@ earnings calendar、公司 IR 页)后手工登记一次:
 
 **Phase 3 联动**: **§五 估值、赔率与定价充分度 (5.6)**末尾必须加子节 `### 技术面位置`,Read `technical_analysis.md`,给"基本面锚 vs 技术面时点"的综合建议。
 
-**降级**: 若公司是美股/港股 → 跳过(当前只支持 Tushare 的 A 股日线)。
+**降级**: 日线源失败时标缺口，不许编 K 线。
 
 ---
 
@@ -264,7 +241,7 @@ earnings calendar、公司 IR 页)后手工登记一次:
 写手只读它与自己那份节点手册,不再有"全量预加载 / 分章 dump / 拼接 5 个 part"这一套(v7 的 3a/3b/3c
 已随判断链收敛删除)。波次调度与装配见 `phases/phase3-node-writing.md`。
 
-**降级**: 美股/港股的 raw_data 也可以跑(只要存在 income/balance/cashflow parquet),但部分 §如十大股东表可能为空。
+**降级**: 部分治理簇可能 deferred/空表——按 provenance 写缺口。
 
 ---
 
@@ -275,15 +252,9 @@ earnings calendar、公司 IR 页)后手工登记一次:
 **A 股**（从 cninfo.com.cn 巨潮资讯）:
 1. WebSearch: `site:cninfo.com.cn {company} {ticker} 2025 年度报告 PDF`
 2. WebSearch: `site:cninfo.com.cn {company} {ticker} 2025 第三季度报告 PDF`（替换为最近季度）
-3. 也可以在 Tushare `disclosure_date` 接口看预约披露日期帮助定位
+3. 看 `disclosure_date.parquet` / manifest.next_disclosure_date 帮助定位
 
-**美股**（从 SEC EDGAR）:
-- `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=10-K&dateb=&owner=include&count=40`
-- 取最新 10-K 和 10-Q 的 PDF 或 HTM 链接
 
-**港股**（从 hkex.com.hk 披露易）:
-- `https://www1.hkexnews.hk/listedco/listconews/advancedsearch/search_active_main.aspx?lang=ZH`
-- 搜该股代码，取最新 Annual Report 和 Interim Report
 
 ### 2.2 下载 + 段落提取
 
@@ -341,7 +312,7 @@ earnings calendar、公司 IR 页)后手工登记一次:
 ## Step 3: 衍生指标计算 + 红旗清单（★ v8）
 
 ```
-{PYBIN} -m scripts.derived_metrics output/{company}/raw_data/ --market {a|us|hk}
+{PYBIN} -m scripts.derived_metrics output/{company}/raw_data/ --market a
 
 # 11 框架审计：markdown 给人读，--json 给机器读
 {PYBIN} -m scripts.financial_audit output/{company}/raw_data --json output/{company}/audit_report.json
@@ -388,15 +359,7 @@ earnings calendar、公司 IR 页)后手工登记一次:
 4. "{company} 研报 券商 目标价 {YEAR}"
 ```
 
-**美股**:
-```
-1. site:seekingalpha.com "{company}" {YEAR}
-2. site:reddit.com/r/investing "{ticker}"
-3. site:reddit.com/r/stocks "{ticker}"
-4. "{ticker} analyst consensus price target {YEAR}"
-```
 
-**港股**: xueqiu + reddit + aastocks.com
 
 ### Round S3: 行业/对标
 
@@ -443,11 +406,11 @@ earnings calendar、公司 IR 页)后手工登记一次:
 
 **采集日期:** {YYYY-MM-DD}
 **公司类型:** public / startup
-**市场:** A股 / 美股 / 港股
+**市场:** A股
 **股票代码:** {ticker}
 
 **数据层状态:**
-- Tushare bundle: ✅ / ⚠️（部分失败）/ ❌（不适用）
+- A-share bundle: ✅ / ⚠️（部分失败）/ ❌（不适用）
 - PDF 原文: 年报 ✅ / 季报 ✅ / 未获取: [原因]
 - 衍生指标 metrics.json: ✅
 
@@ -457,12 +420,12 @@ earnings calendar、公司 IR 页)后手工登记一次:
 
 | 字段 | 信息 | 来源 |
 |------|------|------|
-| 全名 | ... | [Tushare:stock_basic] |
-| 行业 | ... | [Tushare:stock_basic] |
-| 上市日期 | ... | [Tushare:stock_basic] |
+| 全名 | ... | [akshare:stock_basic] |
+| 行业 | ... | [akshare:stock_basic] |
+| 上市日期 | ... | [akshare:stock_basic] |
 | 主营业务（一句话） | ... | [PDF:annual_2024,P.X] |
 
-## §2 财务数据（三大报表，**来源必须是 Tushare 或 PDF，不接受第三方摘要**）
+## §2 财务数据（三大报表，**来源必须是结构化免费源或 PDF，不接受第三方摘要**）
 
 ### 2.1 多年趋势（来自 metrics.json → growth）
 
@@ -474,9 +437,9 @@ earnings calendar、公司 IR 页)后手工登记一次:
 | 2025 H1 | ... | ... | ... | ... | ... | ... |
 | 2025 Q3 (累计) | ... | ... | ... | ... | ... | ... |
 
-*数据源: [Tushare:income+fina_indicator]，交叉验证 [PDF:annual_2024,P.X]*
+*数据源: [akshare:income+fina_indicator]，交叉验证 [PDF:annual_2024,P.X]*
 
-### 2.2 最新报告期关键明细（来自 Tushare income / PDF 原文）
+### 2.2 最新报告期关键明细（来自结构化 income / PDF 原文）
 
 | 科目 | 最近期数值 | 同比 | 变动原因（**PDF 原文引用**） |
 |------|-----------|------|---------------------------|
@@ -484,8 +447,8 @@ earnings calendar、公司 IR 页)后手工登记一次:
 | 销售费用 | ... | ... | [PDF:q3_2025, P.4] "主要系..." |
 | 投资收益 | ... | ... | [PDF:q3_2025, P.4] "主要系..." |
 | 公允价值变动 | ... | ... | [PDF:q3_2025, P.4] "主要系..." |
-| 资产减值损失 | ... | ... | [PDF / Tushare] |
-| 信用减值损失 | ... | ... | [PDF / Tushare] |
+| 资产减值损失 | ... | ... | [PDF / structured] |
+| 信用减值损失 | ... | ... | [PDF / structured] |
 
 **⚠️ 强制要求**: 若最近期利润同比变动 ≥ 30%，必须在本表写清"变动原因"原文（来自 `pdf_sections.json` 的 `income_statement_changes` 段落）。
 
@@ -493,12 +456,12 @@ earnings calendar、公司 IR 页)后手工登记一次:
 
 | 指标 | 数值 | 来源 |
 |------|------|------|
-| PE (TTM) | ... | [Tushare:daily_basic] |
-| PB | ... | [Tushare:daily_basic] |
-| PS | ... | [Tushare:daily_basic] |
-| 市值（亿元） | ... | [Tushare:daily_basic] |
-| 最新收盘价 | ... | [Tushare:daily] |
-| 股息率 | ... | [Tushare:daily_basic] |
+| PE (TTM) | ... | [akshare:daily_basic] |
+| PB | ... | [akshare:daily_basic] |
+| PS | ... | [akshare:daily_basic] |
+| 市值（亿元） | ... | [akshare:daily_basic] |
+| 最新收盘价 | ... | [akshare:daily] |
+| 股息率 | ... | [akshare:daily_basic] |
 
 ## §3 市场与竞争
 
@@ -510,7 +473,7 @@ earnings calendar、公司 IR 页)后手工登记一次:
 
 ## §5 团队与管理层
 
-{来自 [Tushare:top10_holders]、WebSearch + PDF MD&A 章节}
+{来自 [akshare:top10_holders]、WebSearch + PDF MD&A 章节}
 
 ## §6 产品与技术
 
@@ -518,7 +481,7 @@ earnings calendar、公司 IR 页)后手工登记一次:
 
 ## §7 风险与负面信号
 
-{来自 [PDF:annual_2024, risks 章节] + [Tushare:pledge_detail] + WebSearch}
+{来自 [PDF:annual_2024, risks 章节] + [akshare:pledge_detail] + WebSearch}
 
 ## §8 社交媒体与投资社区舆情
 
@@ -530,7 +493,7 @@ earnings calendar、公司 IR 页)后手工登记一次:
 | 股东 | 持股数 | 比例 | 质押 | 来源 |
 |------|-------|-----|------|------|
 
-{来自 [Tushare:top10_holders] + [Tushare:pledge_detail]}
+{来自 [akshare:top10_holders] + [akshare:pledge_detail]}
 
 ### 股权激励 / 减持计划 / 回购
 {WebSearch 近期相关公告}
@@ -551,7 +514,7 @@ earnings calendar、公司 IR 页)后手工登记一次:
 |------|------|------|
 | 缺口项 | 缺什么信息 | "AI 玩具分项毛利率" |
 | 影响的结论 | 如果拿到数据，能验证/推翻哪个章节的哪条判断 | "§四 维度 4 产品技术评分 / §五 DCF 假设" |
-| **已尝试的查询（详细）** | **具体调用的接口/关键词/PDF 页码**，不能只写"查过了" | "Tushare:fina_mainbz(ts_code='002862.SZ', start_year=2022)—返回 0 行；PDF annual_2024.pdf Page 12-20 正则 '玩具.*毛利'—无匹配" |
+| **已尝试的查询（详细）** | **具体调用的接口/关键词/PDF 页码**，不能只写"查过了" | "akshare:fina_mainbz(ts_code='002862.SZ', start_year=2022)—返回 0 行；PDF annual_2024.pdf Page 12-20 正则 '玩具.*毛利'—无匹配" |
 | 当前状态 | ✅已解决 / ⚠️部分 / ❌未找到 | ❌未找到 |
 | 信息可得性判断 | 原则上是否能公开获取 | 高 / 中 / 低 / 原则上不可得 |
 
@@ -566,9 +529,9 @@ earnings calendar、公司 IR 页)后手工登记一次:
 ```markdown
 | # | 缺口项 | 影响的结论 | 已尝试的查询（具体） | 当前状态 | 可得性 |
 |---|-------|-----------|---------------------|---------|--------|
-| 1 | Q3 资产减值损失明细 | 洞察 #1 归因验证 | Tushare:cashflow field `prov_depr_assets` / PDF q3_2025.pdf P.4 `income_statement_changes` 段落 | ✅ 已解决 | 高 |
+| 1 | Q3 资产减值损失明细 | 洞察 #1 归因验证 | akshare:cashflow field `prov_depr_assets` / PDF q3_2025.pdf P.4 `income_statement_changes` 段落 | ✅ 已解决 | 高 |
 | 2 | 超隆光电破产进展 | 洞察 #1 反转概率 | WebFetch cninfo.com.cn 搜"超隆光电" / 公司官网 IR 页 / Google `site:cninfo.com.cn 002862 超隆光电` | ⚠️ 部分（半年报披露资不抵债，无破产公告） | 中（等年报披露） |
-| 3 | AI 玩具分项毛利率 | 洞察 #3 验证 | Tushare:fina_mainbz—135 行但仅按地区拆分、无产品线 / PDF annual_2024 P.12-20 正则 `玩具.*毛利`—无 | ❌ 未找到 | 低（公司不披露分项） |
+| 3 | AI 玩具分项毛利率 | 洞察 #3 验证 | akshare:fina_mainbz—135 行但仅按地区拆分、无产品线 / PDF annual_2024 P.12-20 正则 `玩具.*毛利`—无 | ❌ 未找到 | 低（公司不披露分项） |
 ```
 
 **禁止写法**：
@@ -578,7 +541,7 @@ earnings calendar、公司 IR 页)后手工登记一次:
 
 ---
 
-*本文件由 Phase 1 数据采集生成。每条数据都标注了来源——所有关键财务数字必须来自 [Tushare:*] 或 [PDF:*]，绝不接受 [证券之星算法] 等二手摘要作为关键数据源。*
+*本文件由 Phase 1 数据采集生成。每条数据都标注了来源——所有关键财务数字必须来自 [akshare:*] 或 [PDF:*]，绝不接受 [证券之星算法] 等二手摘要作为关键数据源。*
 ```
 
 ---
@@ -590,7 +553,7 @@ earnings calendar、公司 IR 页)后手工登记一次:
 | 文件 | 内容 | 挂到 |
 |---|---|---|
 | `output/{company}/sentiment.md` | §8 社交媒体与投资社区舆情（看好派/看衰派各 ≥3 条，带平台、日期、原文链接） | 附录C 舆情与资金底稿（与 capital_flow.md 同章） |
-| `output/{company}/data_sources.md` | §11 信息缺口清单 + 本次数据来源与口径（Tushare 接口名 / PDF 文件与页码 / WebSearch 时间戳） | 附录E 数据来源与信息缺口 |
+| `output/{company}/data_sources.md` | §11 信息缺口清单 + 本次数据来源与口径（akshare/sina/cninfo / PDF 文件与页码 / WebSearch 时间戳） | 附录E 数据来源与信息缺口 |
 
 两份分别以 `# 舆情底稿` / `# 数据来源与信息缺口` 起头（装配会自动下沉标题层级）。缺任一 → 主报告对应附录会打 `⚠️ 未找到` 告警。
 
@@ -614,7 +577,7 @@ earnings calendar、公司 IR 页)后手工登记一次:
 - [ ] `metrics.json` 包含 `growth / profitability / valuation / cashflow` 四大部分
 - [ ] phase1-data.md §2.2 每一行 ≥30% 变动都附有 **PDF 原文引用**
 - [ ] §8 舆情 ≥ 8 条、覆盖 ≥ 2 个独立平台
-- [ ] 所有关键财务数据都附 `[Tushare:*]` 或 `[PDF:*]` 标签
+- [ ] 所有关键财务数据都附 `[akshare:*]` 或 `[PDF:*]` 标签
 - [ ] 无任何 `[证券之星算法]` / `[财经网摘要]` 充当关键数据来源
 - [ ] §11 信息缺口清单为附录E + 质量环缺口补查准备好入口
 - [ ] ★ v8 `audit_report.json` + `red_flags.json` 已生成（写手引用红旗 id 的唯一来源）

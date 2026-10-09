@@ -25,13 +25,16 @@
 
 ## R1: 证据刷新(增量模式)
 
-1. **data-collector**(增量模式):prompt 照 Phase 1 模板,外加四行——
+1. **data-collector**(增量模式):prompt 照 Phase 1 模板,外加五行——
    - 「**先设 `CA_CACHE_MAX_AGE_DAYS=0`**(PowerShell `$env:CA_CACHE_MAX_AGE_DAYS='0'` / bash `export`)
      再跑全部采集脚本——复查的意义就是披露后的新证据,7 天数据缓存会把行情/筹码悄悄换成旧值」
    - 「**增量模式**:全部脚本 artifact 正常全量刷新(便宜);PDF 只下**新增披露**——先读
      `{run_dir}/baseline/pdfs_before.json` 已有清单,只下载清单外的新报告(本次复查的主角
      通常就是刚披露的定期报告)并抽 section」
    - 「WebSearch 时间过滤:重点查 {上次 run 日期} 之后的新公告/舆情,sentiment.md / data_sources.md 整体重写」
+   - 「**C14 披露日历**:`a_share_collector --company-dir {artifacts_dir}` 后确认
+     `manifest.next_disclosure_date` 已同步;否则跑
+     `{PYBIN} -m scripts.manifest --company-dir {artifacts_dir} --sync-disclosure-from {artifacts_dir}/raw_data/disclosure_date.parquet`」
    - 「完成报告加一行 `**新增 PDF**: {清单或"无"}`」
 2. **doc-analyst**(增量模式,仅当有新增 PDF):prompt 照 Phase 2 模板,外加——
    - 「**增量模式**:只精读新增 PDF {清单};把要点**并入更新** `phase2-documents.md`——§1 清单加行,

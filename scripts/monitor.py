@@ -1,10 +1,8 @@
-"""Quantitative monitor for Phase 7.
+"""Legacy quantitative monitor (v7 Phase 7). Prefer `--review` (phases/review-pipeline.md).
 
-Compares a historical analysis report (baseline) against fresh Tushare/yfinance
-data to identify material changes (≥10%) and a next-disclosure date, and emits a
-machine-filled §1/§3/§4 brief. The §2 证伪检查 (非共识判断 / 红旗) is left as an
-LLM-fill stub for the Phase 7 主 agent — it reads the baseline report §一 核心非共识判断
-+ §六 致命看空论证 and judges falsification qualitatively (脚本不再解析已删除的 Phase 5 洞察卡).
+Compares a historical analysis report (baseline) against fresh A-share free-source
+data to identify material changes (≥10%) and a next-disclosure date (C14), and emits a
+machine-filled §1/§3/§4 brief. A-share only (P2); US/HK product paths removed.
 
 Usage:
     from scripts.monitor import Monitor
@@ -88,67 +86,42 @@ def _days_between(date1: str, date2: str) -> int | None:
 # ---------- Fresh data fetcher ----------
 
 def _fetch_fresh_metrics(ticker: str, market: str) -> dict[str, Any]:
-    """Re-run collector + derived_metrics, return merged dict of metric→value."""
+    """Re-run A-share collector + derived_metrics, return merged dict of metric→value."""
     fresh: dict[str, Any] = {}
+    mkt = market.lower()
+    if mkt not in ("a", "a股", "ashare", "a-share"):
+        raise ValueError(
+            f"monitor 仅支持 A 股 (got market={market!r}); 美股/港股产品路径已移除。"
+            "增量复查请用 --review + a_share_collector。"
+        )
 
-    if market.lower() in ("a", "a股"):
-        from .tushare_collector import TushareCollector, normalize_a_code
-        from .derived_metrics import compute_a_share
-        c = TushareCollector()
-        ts_code = normalize_a_code(ticker)
-        bundle = c.collect_all(ts_code, start_year=2022)
-        metrics = compute_a_share(bundle)
-        fresh["bundle"] = bundle
-        fresh["metrics"] = metrics
-        fresh["ts_code"] = ts_code
+    from .a_share_collector import AShareCollector
+    from .codes import normalize_a_code
+    from .derived_metrics import compute_a_share
+    from . import manifest as manifest_mod
 
-        # next disclosure date from disclosure_date API
-        try:
-            disc = bundle.get("disclosure_date")
-            if disc is not None and not disc.empty:
-                # Get the nearest future ann_date or pre_ann_date
-                fresh["next_disclosure"] = _nearest_future_disclosure(disc)
-        except Exception:
-            fresh["next_disclosure"] = None
-
-    elif market.lower() in ("us", "美股"):
-        from .us_collector import USCollector
-        from .derived_metrics import compute_us
-        c = USCollector()
-        bundle = c.collect_all(ticker)
-        metrics = compute_us(bundle)
-        fresh["bundle"] = bundle
-        fresh["metrics"] = metrics
-        fresh["ts_code"] = ticker
+    c = AShareCollector()
+    ts_code = normalize_a_code(ticker)
+    bundle, _prov = c.collect_all(ts_code, start_year=2022)
+    metrics = compute_a_share(bundle)
+    fresh["bundle"] = bundle
+    fresh["metrics"] = metrics
+    fresh["ts_code"] = ts_code
+    try:
+        fresh["next_disclosure"] = manifest_mod.nearest_future_disclosure_from_df(
+            bundle.get("disclosure_date")
+        )
+    except Exception:
         fresh["next_disclosure"] = None
-
-    elif market.lower() in ("hk", "港股"):
-        from .hk_collector import HKCollector
-        c = HKCollector()
-        bundle = c.collect_all(ticker)
-        fresh["bundle"] = bundle
-        fresh["metrics"] = {}  # hk metrics TBD
-        fresh["ts_code"] = ticker
-        fresh["next_disclosure"] = None
-
-    else:
-        raise ValueError(f"Unknown market: {market}")
 
     return fresh
 
 
 def _nearest_future_disclosure(df) -> str | None:
-    """From disclosure_date DataFrame, pick the nearest future date."""
-    import pandas as pd
-    today = dt.date.today().strftime("%Y%m%d")
-    for col in ("pre_ann_date", "ann_date", "modify_date"):
-        if col in df.columns:
-            future = df[df[col] > today].sort_values(col)
-            if not future.empty:
-                raw = str(future.iloc[0][col])
-                if len(raw) == 8:
-                    return f"{raw[:4]}-{raw[4:6]}-{raw[6:]}"
-    return None
+    """Compat wrapper → manifest.nearest_future_disclosure_from_df (C14 columns)."""
+    from . import manifest as manifest_mod
+
+    return manifest_mod.nearest_future_disclosure_from_df(df)
 
 
 # ---------- Baseline vs fresh comparison ----------

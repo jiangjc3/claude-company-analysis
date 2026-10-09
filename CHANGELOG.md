@@ -4,6 +4,29 @@
 
 ---
 
+## [v8.10-p2] — 2026-10-09 — Agents / 报告装配 / `--review` 披露日历
+
+**Changed**
+
+- SKILL / README / agents / phases / `search-strategy`：产品路径 **仅 A 股 + 免费多源**；去掉美港确认问句与 Tushare 产品措辞
+- `install.sh`：仅 A 股文案；providers 含 governance / eastmoney_flow / peer_universe；不再下载已移除的 us/hk/tushare 模块
+- `monitor`：改走 `AShareCollector` + C14；拒绝非 A 股市场
+- 来源标签约定：`[akshare:…]` / `[sina:…]` / `[cninfo:…]` / `[PDF:…]`（`check_phase2` 同步识别）
+
+**Added**
+
+- C14 硬化：`manifest --sync-disclosure-from`、`a_share_collector --company-dir` 自动写 `next_disclosure_date`；`--review` R1 清单补同步步骤
+- `scripts/run_fixture_pipeline.py`：东山 fixture → 主报告 md + `lint_v8` + HTML（无网络 / 无 LLM）
+- 单测 `scripts/tests/test_a_share_p2.py`（披露同步 + fixture 管线 + 产品文档烟测）
+
+**Deferred to P3**
+
+- `--compare` 仅 A 股成员 hardening / 双 reviewer「多源缺口」提示 / CI nightly network / 用户「数据源与合规」短页
+- `stk_managers` / `stk_rewards` / `top_inst` 仍无稳免费单票 API → 保持 `deferred`/`partial` 显式缺口
+- attic 中旧 Tushare 采集器最终删除（方案 D4）
+
+---
+
 ## [v8.10-p1] — 2026-10-09 — 治理簇 / 资金流 / Peer（免费多源）
 
 **Added**
