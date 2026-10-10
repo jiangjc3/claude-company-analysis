@@ -35,13 +35,15 @@ else:
 
 
 def output_dir(company: str) -> Path:
-    for root in (PLUGIN_ROOT / "output", SKILL_ROOT / "output"):
+    # Prefer an already-existing company dir under either layout, then create under
+    # OUTPUT_ROOT (SKILL_ROOT/output for a flat git clone; plugin root when installed).
+    for root in (PLUGIN_ROOT / "output", SKILL_ROOT / "output", OUTPUT_ROOT):
         candidate = root / company
         if candidate.exists():
             (candidate / "raw_data").mkdir(exist_ok=True)
             (candidate / "raw_data" / "pdfs").mkdir(exist_ok=True)
             return candidate
-    p = PLUGIN_ROOT / "output" / company
+    p = OUTPUT_ROOT / company
     p.mkdir(parents=True, exist_ok=True)
     (p / "raw_data").mkdir(exist_ok=True)
     (p / "raw_data" / "pdfs").mkdir(exist_ok=True)

@@ -8,6 +8,10 @@
 
 **Added**
 
+- **Cursor 全量运行时 P0**：交付入口改为 Cursor Project（不再以 Claude Code Skill 为交付目标）
+  - `scripts/cursor_run.py`：`resolve` / `collect` / `import-pack` / `emit-prompts` / `assemble` / `status`
+  - `CURSOR_RUN.md` + `agents/cursor/orchestrator.md`（10 角色 → Cursor workers 映射）
+  - `scripts/tests/test_cursor_run.py`
 - Follow-up #3：免费单票源填补治理/龙虎榜机构席位簇
   - `stk_managers` / `stk_rewards` ← 东财 F10 `CompanyManagement/PageAjax`（`gglb`）
   - `top_inst` ← akshare `stock_lhb_stock_detail_em`（名称含「机构」）+ `stock_lhb_jgmmtj_em` 备源
@@ -17,11 +21,13 @@
 
 **Changed**
 
+- README / `SKILL.md`：标明现行运行时为 Cursor；Claude Code 安装路径改为可选
 - 上述三簇不再以 `deferred` stub 占位；薪酬字段全空时 `stk_rewards` 标 `partial`（年报补洞），禁止静默当「无披露」
 - `docs/data-sources-compliance.md` / `CONTRIBUTING.md` / `agents/data-collector.md` 同步缺口语义
 
 **Fixed**
 
+- `config.output_dir`：扁平 git clone 时不再误写到 `/output`（改落 `OUTPUT_ROOT` / `SKILL_ROOT/output`）
 - `test_daily_fallback.TestSinaDailyLive.test_bj_code_schema`：`get_daily_history_legacy` 形参是 `datalen`，误传 `years=` 导致 `CA_NETWORK_TESTS=1` 烟测 TypeError
 
 ---

@@ -1,11 +1,11 @@
 # YEZHI Company Analysis
 
-**在 Claude Code 里输入一个公司名，得到一份能直接读的投资分析报告。**
+**在 Cursor Project 里说「跑某某公司」，得到一份能直接读的投资分析报告。**
 
 它会自己去拉财报数据、下载并精读年报原文、跑完会计审计框架，然后把结论收敛成一张五行决断卡：
 **是不是好公司 / 在变好吗 / 贵不贵 / 扛得住吗 / 现在该怎么办**。
 
-**本 fork（P0–P3）仅支持 A 股**，数据采集为 **akshare / 新浪 / 巨潮等免费多源**，**不需要 Tushare token**。P3 硬化 `--compare` 仅 A 股成员、双 reviewer「多源缺口」检查、可选实网 CI 模板，并删除 attic 旧采集器。报告全程说人话，每个关键数字都能回到出处。数据源与合规见 [`docs/data-sources-compliance.md`](./docs/data-sources-compliance.md)。
+**本 fork（P0–P3 + Cursor runtime）仅支持 A 股**，数据采集为 **akshare / 新浪 / 巨潮等免费多源**，**不需要 Tushare token**。**现行交付运行时是 Cursor**（见 [`CURSOR_RUN.md`](./CURSOR_RUN.md)）；`SKILL.md` / `agents/*` 仍是判断链协议与写手手册。报告全程说人话，每个关键数字都能回到出处。数据源与合规见 [`docs/data-sources-compliance.md`](./docs/data-sources-compliance.md)。
 
 <p align="center">
   <a href="https://github.com/jiangjc3/claude-company-analysis/actions/workflows/tests.yml"><img src="https://github.com/jiangjc3/claude-company-analysis/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
@@ -138,54 +138,59 @@
 
 | 要求 | 说明 |
 |---|---|
-| **Claude Code** | 这是一个 Claude Code 的 skill，不是网页版 Claude 或独立命令行程序。装好后在 Claude Code 对话里用 |
+| **Cursor Project / agents** | **现行运行时**：在 Cursor 对话里说「跑某某公司」；机器层用 `scripts/cursor_run.py`（详见 [`CURSOR_RUN.md`](./CURSOR_RUN.md)） |
 | **Python 3.11+** | 数据层跑在本地 Python，不占用模型上下文 |
 | **数据源** | **免费多源**（akshare / 新浪 K 线 / 巨潮公告与 PDF）；**不需要 Tushare token** |
 | **市场** | **仅 A 股**（美股/港股路径已移除） |
 | **一次全量要多久** | 上游实测约 2 小时量级；采集段视免费源限速可能更长 |
-| **要花多少 token** | 主要成本在 sub-agent 写作与评审（模型侧），不是数据 API 账单 |
+| **要花多少 token** | 主要成本在写手与评审（模型侧），不是数据 API 账单 |
 
-### 1. 装 skill
-
-```bash
-# Mac / Linux
-curl -fsSL https://raw.githubusercontent.com/leafpaper/claude-company-analysis/main/install.sh | bash
-```
-```powershell
-# Windows(在克隆下来的仓库根目录里跑)
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
-
-装到 `~/.claude/skills/company-analysis/`，10 个 sub-agent 装到 `~/.claude/agents/company-analysis/`。
-**装完要重启 Claude Code**，sub-agent 名册才会生效。
-
-### 2. 装 Python 依赖
+### 1. 克隆本仓并装依赖
 
 ```bash
-pip3 install --user -r ~/.claude/skills/company-analysis/scripts/requirements.txt
+git clone https://github.com/jiangjc3/claude-company-analysis.git
+cd claude-company-analysis
+pip3 install --user -r scripts/requirements.txt
+python3 -m scripts.check_env
 ```
 
 依赖：`akshare pypdf pandas pyarrow requests markdown pyyaml jsonschema`（见 `scripts/requirements.txt`）。
 
-### 3. 自检并开跑（无需 Tushare）
+### 2. 在 Cursor 里开跑（推荐）
 
 ```bash
-cd ~/.claude/skills/company-analysis && python3 -m scripts.check_env
-# 采集烟测（可选）
-python3 -m scripts.a_share_collector 600519.SH --name 贵州茅台
+# 机器 Phase 1
+python3 -m scripts.cursor_run collect --query 贵州茅台
+# 生成判断链 worker prompts，再按 CURSOR_RUN.md 派 Cursor workers
+python3 -m scripts.cursor_run emit-prompts --company 贵州茅台
+python3 -m scripts.cursor_run status --company 贵州茅台
 ```
 
-全部 `[OK]` 就可以在 Claude Code 对话里跑了：
+或在本 Cursor Project 直接说：**「跑贵州茅台」** / **「跑 600519」**。
+
+### 3. （可选）Claude Code skill 安装
+
+上游仍可按 Claude Code Skill 安装；**本 fork 交付不以该路径为准**。
+
+```bash
+# Mac / Linux（指向本 fork 时请改 URL）
+curl -fsSL https://raw.githubusercontent.com/leafpaper/claude-company-analysis/main/install.sh | bash
+```
+
+装完后也可在 Claude Code 对话里用 `/company-analysis`，但 Project 默认流程走 Cursor。
+
+Cursor Project 典型说法：
 
 ```
-/company-analysis 贵州茅台 600519       # 全量分析（A 股）
-/company-analysis 贵州茅台 --review     # 财报季增量复查
-/company-analysis 东山精密 --compare    # 同行对比（成员须为 A 股）
+跑贵州茅台
+跑 600519
+继续宁德时代判断链
+组装贵州茅台报告
 ```
+
+（可选 Claude Code：`/company-analysis 贵州茅台 600519` / `--review` / `--compare`。）
 
 可选 HTTP 限速 / 缓存见 [`.env.sample`](./.env.sample)。
-
-自然语言同样触发：「复查一下茅台」「和同行比比」。
 
 ---
 
@@ -202,10 +207,11 @@ output/{公司名}/
 ├── phase1-data.md / phase2-documents.md
 └── runs/{日期}/
     ├── nodes/node-*.md        # 五个判断节点
+    ├── cursor_prompts/        # Cursor worker briefs（cursor_run emit-prompts）
     ├── assembly/assembly.json # 装配产物
     ├── reviewer_responses/    # 三轮评审往返记录
     ├── {公司}-analysis-{日期}.md
-    └── {公司}-analysis-{日期}.html   # 最终成品
+    └── 分析报告_dashboard.html
 ```
 
 报告 HTML 发布到姊妹仓库 [leafpaper/Inves-Report](https://github.com/leafpaper/Inves-Report)，由 GitHub Pages 托管。
