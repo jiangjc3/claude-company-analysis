@@ -13,6 +13,7 @@
   - `top_inst` ← akshare `stock_lhb_stock_detail_em`（名称含「机构」）+ `stock_lhb_jgmmtj_em` 备源
   - `schema_bridge.bridge_stk_managers` / `bridge_stk_rewards` / `bridge_top_inst_*`
   - 单测 `scripts/tests/test_deferred_fields.py`（离线 mock + 可选 `CA_NETWORK_TESTS=1`）
+- `docs/optional-network-nightly.workflow.yml`：同步纳入 `TestSinaDailyLive`（P0/P1 + BJ sina 日线）；待具备 `workflow` scope 的凭证落到 `.github/workflows/network-nightly.yml`
 
 **Changed**
 

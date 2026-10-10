@@ -21,10 +21,11 @@ Optional live smoke (rate-limited free sources):
 ```bash
 CA_NETWORK_TESTS=1 python -m unittest \
   scripts.tests.test_a_share_p0.TestNetworkSmoke \
-  scripts.tests.test_a_share_p1.TestNetworkP1Smoke -v
+  scripts.tests.test_a_share_p1.TestNetworkP1Smoke \
+  scripts.tests.test_daily_fallback.TestSinaDailyLive -v
 ```
 
-Optional GitHub Actions: copy [`docs/optional-network-nightly.workflow.yml`](./docs/optional-network-nightly.workflow.yml) to `.github/workflows/network-nightly.yml` (needs a token/app with `workflow` scope to land via PR).
+Optional GitHub Actions: copy [`docs/optional-network-nightly.workflow.yml`](./docs/optional-network-nightly.workflow.yml) to `.github/workflows/network-nightly.yml` (schedule + `workflow_dispatch`; `continue-on-error`). Landing the Actions path via `git push` requires a PAT/app with the `workflow` scope (in addition to `repo`).
 
 ## Pull requests
 

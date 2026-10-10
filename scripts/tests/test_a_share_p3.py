@@ -216,11 +216,17 @@ class TestDocsAndAttic(unittest.TestCase):
 
     def test_network_nightly_workflow_optional(self):
         root = Path(__file__).resolve().parents[2]
-        # Documented template (PAT without `workflow` scope cannot land .github/workflows/*)
-        wf = (root / "docs" / "optional-network-nightly.workflow.yml").read_text(encoding="utf-8")
+        # Prefer landed Actions path; docs/ template is the fallback when PAT
+        # lacks `workflow` scope and cannot push .github/workflows/*.
+        landed = root / ".github" / "workflows" / "network-nightly.yml"
+        template = root / "docs" / "optional-network-nightly.workflow.yml"
+        path = landed if landed.is_file() else template
+        self.assertTrue(path.is_file(), f"missing network nightly workflow at {path}")
+        wf = path.read_text(encoding="utf-8")
         self.assertIn("CA_NETWORK_TESTS", wf)
         self.assertIn("continue-on-error: true", wf)
         self.assertIn("workflow_dispatch", wf)
+        self.assertIn("TestSinaDailyLive", wf)
 
 
 if __name__ == "__main__":
