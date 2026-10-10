@@ -34,13 +34,11 @@ Optional GitHub Actions: copy [`docs/optional-network-nightly.workflow.yml`](./d
 4. Do not commit tokens, cache dumps, or full `output/` runs.
 5. If you touch free-source scrapers, document gap behavior in `docs/data-sources-compliance.md`.
 
-## Explicit gaps (do not “fix” with silence)
+## Empty-table honesty (do not “fix” with silence)
 
-Until a stable free per-stock API exists, keep these as `deferred` / `partial` with notes:
+`stk_managers` / `stk_rewards` / `top_inst` now have free per-stock sources (东财 F10 + 龙虎榜). Still treat `source_failed` / `partial` / `empty_genuine` as gaps — writing「无高管 / 无薪酬 / 无机构席位」from a failed or partial table is a bug.
 
-- `stk_managers`, `stk_rewards`, `top_inst`
-
-Writing「无高管 / 无薪酬 / 无机构席位」from an empty deferred table is a bug.
+If a new cluster has **no** stable free API after an honest search, keep it explicitly `deferred` and document the gap in the PR — never invent rows.
 
 ## Code of conduct (lightweight)
 

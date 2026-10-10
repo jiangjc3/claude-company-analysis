@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+**Added**
+
+- Follow-up #3：免费单票源填补治理/龙虎榜机构席位簇
+  - `stk_managers` / `stk_rewards` ← 东财 F10 `CompanyManagement/PageAjax`（`gglb`）
+  - `top_inst` ← akshare `stock_lhb_stock_detail_em`（名称含「机构」）+ `stock_lhb_jgmmtj_em` 备源
+  - `schema_bridge.bridge_stk_managers` / `bridge_stk_rewards` / `bridge_top_inst_*`
+  - 单测 `scripts/tests/test_deferred_fields.py`（离线 mock + 可选 `CA_NETWORK_TESTS=1`）
+
+**Changed**
+
+- 上述三簇不再以 `deferred` stub 占位；薪酬字段全空时 `stk_rewards` 标 `partial`（年报补洞），禁止静默当「无披露」
+- `docs/data-sources-compliance.md` / `CONTRIBUTING.md` / `agents/data-collector.md` 同步缺口语义
+
 **Fixed**
 
 - `test_daily_fallback.TestSinaDailyLive.test_bj_code_schema`：`get_daily_history_legacy` 形参是 `datalen`，误传 `years=` 导致 `CA_NETWORK_TESTS=1` 烟测 TypeError
@@ -29,7 +42,7 @@
 
 **Deferred (explicit gaps)**
 
-- `stk_managers` / `stk_rewards` / `top_inst` 仍无稳免费单票 API → 保持 `deferred`/`partial`（禁止静默当事实）
+- ~~`stk_managers` / `stk_rewards` / `top_inst`~~ → 见 Unreleased Follow-up #3（已接免费单票源）
 
 ---
 

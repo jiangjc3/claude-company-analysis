@@ -46,7 +46,7 @@ cd 到 skill 根目录(Mac/Linux: ~/.claude/skills/company-analysis;Windows: %US
 核心簇: income / balancesheet / cashflow / fina_indicator / daily。
 
 - `_core_gate.json.core_ok == false` 或任一核心簇 `status=source_failed` → 判定至少「部分降级」,并在响应里点名；**禁止**把 `source_failed` 写成「公司没有该数据」。
-- `stk_managers` / `stk_rewards` / `top_inst` 可能是 `deferred`/`partial`（无稳免费单票 API）——**显式缺口**,禁止写成「无高管/无席位」。
+- `stk_managers` / `stk_rewards` / `top_inst` 已接免费单票源（东财 F10 / 龙虎榜机构席位）；若 provenance 为 `source_failed`/`partial`/`empty_genuine`——**显式缺口**,禁止写成「无高管/无薪酬/无席位」。
 - 采集成功后会尝试把 C14 `disclosure_date` 同步进 `manifest.next_disclosure_date`（供 `--review` / 报告戳）。若未解析到未来日,再显式跑一次:
 
 ```
@@ -148,7 +148,7 @@ PDF 失败 → 备用 URL → 仍失败标"已尝试: {urls}",继续。
 - {output_dir}/raw_data/pdf_sections_*.json
 - {output_dir}/phase1-data.md + sentiment.md + data_sources.md
 - manifest.next_disclosure_date: {YYYY-MM-DD 或 "未同步"}
-**降级标注**: 无 / "北交所 hk_hold 0 行" / "disclosure_date 无未来预约日" / "stk_managers deferred" 等
+**降级标注**: 无 / "北交所 hk_hold 0 行" / "disclosure_date 无未来预约日" / "stk_rewards partial（F10 薪酬空）" 等
 **lessons (≥0 条,可选)**: 本次踩坑(API 怪异 / 数据降级 / 反偷懒红线等,每条 ≤ 100 字)。无则整段省略。
 
 **质量门控**:
