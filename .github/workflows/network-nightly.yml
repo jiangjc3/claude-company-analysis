@@ -1,6 +1,6 @@
 # Optional live free-source smoke (akshare / sina / cninfo).
 # Not required for merge: default CI is tests.yml (offline unit tests).
-# Mirror of .github/workflows/network-nightly.yml (kept in docs/ for discoverability).
+# Canonical Actions path (this file). Mirror: docs/optional-network-nightly.workflow.yml
 #
 # Failures here are often upstream flakiness / rate limits — treat as signal,
 # not a hard release gate. Local equivalent:
