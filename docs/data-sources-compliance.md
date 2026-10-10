@@ -11,7 +11,9 @@
 | 估值快照 | akshare | 日线 × 股本估算 |
 | 公告 / PDF | 巨潮 cninfo | 交易所公告检索降级 |
 | 股东 / 质押 / 解禁 / 大宗等 | akshare | 年报 PDF 精读补洞 |
+| 高管名单 / 薪酬持股 | 东财 F10 `CompanyManagement/PageAjax` | 薪酬字段偶发全空 → `partial`；年报 PDF 权威 |
 | 资金流 / 北向 / 两融 / 龙虎榜 | akshare / 东财 | **最脆**；失败必须在附录 E 标缺口 |
+| 龙虎榜机构席位 | akshare `stock_lhb_stock_detail_em`（机构*席位）+ `stock_lhb_jgmmtj_em` 备源 | 窗口无上榜 → `empty_genuine` |
 | Peer | 公开行业成分 + 市值 | 推荐 `--peer-codes` 手改错配 |
 
 列名尽量兼容旧 Tushare 形 parquet，便于审计与装配脚本少改；**运行时不再调用 Tushare**。
@@ -29,13 +31,15 @@
 
 附录 E（`data_sources.md`）是缺口总账；双 reviewer 会查「把缺口伪装成公司事实」。
 
-## 仍显式缺口的簇（无稳免费单票 API）
+## 诚实空表（已接线，仍禁止伪装）
 
-以下簇**保持** `deferred` / `partial`，不得静默当事实：
+以下簇**已有**免费单票源，但失败 / 字段缺失时仍不得写成「公司无高管 / 无薪酬 / 无机构席位」：
 
-- `stk_managers` — 董监高名单 → 年报 PDF
-- `stk_rewards` — 薪酬 → 年报 PDF
-- `top_inst` — 龙虎榜机构席位明细 → 有 `top_list` 时仍可能 partial
+| 簇 | 主源 | 常见非 ok |
+|---|---|---|
+| `stk_managers` | 东财 F10 gglb | `source_failed` / 偶发 `empty_genuine` |
+| `stk_rewards` | 同上 SALARY/HOLD_NUM | 名册有、薪酬全空 → `partial`（去年报） |
+| `top_inst` | LHB 席位明细含「机构」；备源 jgmmtj 机构合计 | 窗口无机构上榜 → `empty_genuine` |
 
 ## 合规与使用边界
 

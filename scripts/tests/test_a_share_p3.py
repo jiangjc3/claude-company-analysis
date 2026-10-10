@@ -119,23 +119,76 @@ class TestCompareAShareHardening(CompareEnv):
             compare.assemble("poison-hk", today="2026-10-09")
 
 
-class TestDeferredGapsStillExplicit(unittest.TestCase):
-    def test_stk_managers_deferred(self):
-        r = gov.fetch_stk_managers("600519.SH")
-        self.assertEqual(r.provenance.status, SourceStatus.DEFERRED)
-        self.assertIn("P3 gap", r.provenance.note or "")
+class TestGovernanceFieldsNoLongerDeferred(unittest.TestCase):
+    """Follow-up #3 landed free sources — status must not stay DEFERRED stubs."""
 
-    def test_stk_rewards_deferred(self):
-        r = gov.fetch_stk_rewards("600519.SH")
-        self.assertEqual(r.provenance.status, SourceStatus.DEFERRED)
-        self.assertIn("P3 gap", r.provenance.note or "")
+    def test_stk_managers_not_deferred_stub(self):
+        from unittest.mock import patch
 
-    def test_top_inst_partial_or_empty(self):
         import pandas as pd
 
-        r = em_flow.fetch_top_inst("600519.SH", pd.DataFrame({"trade_date": ["20260101"]}))
-        self.assertEqual(r.provenance.status, SourceStatus.PARTIAL)
-        self.assertIn("P3 gap", r.provenance.note or "")
+        raw = pd.DataFrame(
+            [
+                {
+                    "PERSON_NAME": "甲",
+                    "POSITION": "董事长",
+                    "SEX": "男",
+                    "HIGH_DEGREE": "硕士",
+                    "POSITION_TYPE_CODE": "1",
+                    "INCUMBENT_TIME": "2020-01-01至今",
+                    "SALARY": 1.0,
+                    "HOLD_NUM": None,
+                }
+            ]
+        )
+        with patch.object(gov, "_fetch_em_company_management", return_value=raw):
+            r = gov.fetch_stk_managers("600519.SH")
+        self.assertNotEqual(r.provenance.status, SourceStatus.DEFERRED)
+        self.assertEqual(r.provenance.status, SourceStatus.OK)
+
+    def test_stk_rewards_not_deferred_stub(self):
+        from unittest.mock import patch
+
+        import pandas as pd
+
+        raw = pd.DataFrame(
+            [
+                {
+                    "PERSON_NAME": "甲",
+                    "POSITION": "董事长",
+                    "SEX": "男",
+                    "HIGH_DEGREE": "硕士",
+                    "POSITION_TYPE_CODE": "1",
+                    "INCUMBENT_TIME": "2020-01-01至今",
+                    "SALARY": 100.0,
+                    "HOLD_NUM": 1000.0,
+                }
+            ]
+        )
+        with patch.object(gov, "_fetch_em_company_management", return_value=raw):
+            r = gov.fetch_stk_rewards("600519.SH")
+        self.assertNotEqual(r.provenance.status, SourceStatus.DEFERRED)
+        self.assertEqual(r.provenance.status, SourceStatus.OK)
+
+    def test_top_inst_not_partial_stub(self):
+        import datetime as dt
+        from unittest.mock import MagicMock, patch
+
+        import pandas as pd
+
+        day = dt.date.today().strftime("%Y%m%d")
+        fake_ak = MagicMock()
+        fake_ak.stock_lhb_stock_detail_date_em.return_value = pd.DataFrame()
+        fake_ak.stock_lhb_stock_detail_em.return_value = pd.DataFrame(
+            [{"交易营业部名称": "机构专用", "买入金额": 1.0, "卖出金额": 0.0, "净额": 1.0}]
+        )
+        fake_ak.stock_lhb_jgmmtj_em.return_value = pd.DataFrame()
+        with patch.object(em_flow, "_ak", return_value=fake_ak):
+            r = em_flow.fetch_top_inst(
+                "600519.SH", pd.DataFrame({"trade_date": [day]}), days=30
+            )
+        self.assertNotEqual(r.provenance.status, SourceStatus.DEFERRED)
+        self.assertEqual(r.provenance.status, SourceStatus.OK)
 
 
 class TestDocsAndAttic(unittest.TestCase):

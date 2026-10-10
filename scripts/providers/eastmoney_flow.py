@@ -6,6 +6,7 @@ import datetime as dt
 import pandas as pd
 
 from ..codes import normalize_a_code, to_symbol6
+from ..schema_bridge import bridge_top_inst_jgmmtj, bridge_top_inst_seats
 from .base import ClusterResult, Provenance, SourceStatus, empty_genuine, failed, ok
 
 
@@ -251,26 +252,99 @@ def fetch_top_list(ts_code: str, days: int = 30) -> ClusterResult:
         return failed(cluster, primary, e)
 
 
-def fetch_top_inst(ts_code: str, top_list_df: pd.DataFrame | None = None) -> ClusterResult:
-    """Institution seats — best-effort from LHB; often empty even when top_list has rows."""
-    cluster, primary = "top_inst", "akshare_stock_lhb_jgstatistic_em"
+def fetch_top_inst(
+    ts_code: str,
+    top_list_df: pd.DataFrame | None = None,
+    days: int = 30,
+) -> ClusterResult:
+    """龙虎榜机构席位 — seat-level (优先) + jgmmtj 机构合计 (备源).
+
+    Sources (free, A-share):
+    1. ``stock_lhb_stock_detail_em`` seats whose name contains「机构」(per trade_date)
+    2. ``stock_lhb_jgmmtj_em`` filtered by SECURITY_CODE (aggregate buy/sell/net per day)
+    """
+    cluster = "top_inst"
+    primary = "akshare_stock_lhb_stock_detail_em"
+    secondary = "akshare_stock_lhb_jgmmtj_em"
     code = normalize_a_code(ts_code)
-    # Without a cheap per-stock inst API, return empty_genuine when no top_list,
-    # or PARTIAL stub noting gap when listed but inst seats unavailable.
-    if top_list_df is None or top_list_df.empty:
-        return empty_genuine(cluster, primary, "no LHB dates to expand institution seats")
-    return ClusterResult(
-        name=cluster,
-        df=pd.DataFrame(columns=["ts_code", "trade_date", "exalter", "buy", "sell", "net_buy"]),
-        provenance=Provenance(
-            cluster=cluster,
-            primary=primary,
-            status=SourceStatus.PARTIAL,
-            rows=0,
-            note="P3 gap: institution seat detail not reliably available free per stock; "
-            "top_list reasons still usable. Do not invent net_buy.",
-            used=None,
-        ),
+    sym = to_symbol6(code)
+    end = dt.date.today()
+    start = end - dt.timedelta(days=days)
+    start_s, end_s = start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+    errors: list[str] = []
+
+    # ---- dates to expand seats ----
+    dates: list[str] = []
+    if top_list_df is not None and not top_list_df.empty and "trade_date" in top_list_df.columns:
+        dates = (
+            pd.to_datetime(top_list_df["trade_date"], errors="coerce")
+            .dt.strftime("%Y%m%d")
+            .dropna()
+            .astype(str)
+            .tolist()
+        )
+        dates = sorted({d for d in dates if start_s <= d <= end_s})
+    if not dates:
+        try:
+            raw_dates = _ak().stock_lhb_stock_detail_date_em(symbol=sym)
+            if raw_dates is not None and not raw_dates.empty:
+                dcol = "交易日" if "交易日" in raw_dates.columns else raw_dates.columns[-1]
+                dser = pd.to_datetime(raw_dates[dcol], errors="coerce").dt.strftime("%Y%m%d")
+                dates = sorted({d for d in dser.dropna().astype(str).tolist() if start_s <= d <= end_s})
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"detail_date:{e}")
+
+    seat_frames: list[pd.DataFrame] = []
+    for d in dates[:12]:  # cap network calls
+        for flag in ("买入", "卖出"):
+            try:
+                raw = _ak().stock_lhb_stock_detail_em(symbol=sym, date=d, flag=flag)
+                bridged = bridge_top_inst_seats(raw, code, d)
+                if not bridged.empty:
+                    seat_frames.append(bridged)
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"seat:{d}:{flag}:{e}")
+
+    if seat_frames:
+        seats = pd.concat(seat_frames, ignore_index=True)
+        # buy+sell pulls can duplicate the same 机构专用 row — keep one per date/exalter
+        seats = seats.drop_duplicates(subset=["trade_date", "exalter", "buy", "sell", "net_buy"])
+        return ok(
+            cluster,
+            seats.reset_index(drop=True),
+            primary,
+            secondary=secondary,
+            note=f"seat-level 机构*; dates={len(dates)}; errors={len(errors)}",
+        )
+
+    # ---- fallback: market-wide jgmmtj filtered to this stock ----
+    try:
+        jg = _ak().stock_lhb_jgmmtj_em(start_date=start_s, end_date=end_s)
+        if jg is not None and not jg.empty and "代码" in jg.columns:
+            hit = jg[jg["代码"].astype(str).str.zfill(6) == sym].copy()
+            bridged = bridge_top_inst_jgmmtj(hit, code)
+            if not bridged.empty:
+                return ok(
+                    cluster,
+                    bridged,
+                    secondary,
+                    secondary=primary,
+                    note="jgmmtj aggregate 机构专用 per LHB day (seat names not expanded); "
+                    f"seat_errors={len(errors)}",
+                )
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"jgmmtj:{e}")
+        if len(errors) >= 3 and not dates:
+            return failed(cluster, primary, "; ".join(errors[:3]), secondary=secondary)
+
+    if errors and not dates and (top_list_df is None or top_list_df.empty):
+        # No LHB activity and sources stumbled — still empty_genuine if jgmmtj answered 0
+        pass
+    return empty_genuine(
+        cluster,
+        primary,
+        "no institution seat / jgmmtj rows in window "
+        f"(top_list_dates={len(dates)}; errors={len(errors)}) — not「无机构」if sources failed",
     )
 
 

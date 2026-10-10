@@ -301,7 +301,170 @@ def bridge_pledge(df: pd.DataFrame, ts_code: str) -> pd.DataFrame:
 
 
 def bridge_stk_managers_stub(ts_code: str) -> pd.DataFrame:
-    return pd.DataFrame(columns=["ts_code", "ann_date", "name", "gender", "lev", "title", "edu", "national", "birthday", "begin_date", "end_date"])
+    return pd.DataFrame(
+        columns=[
+            "ts_code",
+            "ann_date",
+            "name",
+            "gender",
+            "lev",
+            "title",
+            "edu",
+            "national",
+            "birthday",
+            "begin_date",
+            "end_date",
+        ]
+    )
+
+
+def _parse_incumbent_range(text: object) -> tuple[str, str]:
+    """'2011-01-26至今' / '2020-01-01至2023-12-31' → (begin YYYYMMDD, end YYYYMMDD|'')."""
+    import re
+
+    s = str(text or "").strip()
+    if not s or s in ("--", "nan", "None"):
+        return "", ""
+    m = re.match(
+        r"(\d{4}-\d{2}-\d{2}|\d{8})\s*(?:至今|到今|—|-|至|$)\s*(\d{4}-\d{2}-\d{2}|\d{8})?",
+        s,
+    )
+    if not m:
+        return "", ""
+    begin = m.group(1).replace("-", "")
+    end_raw = m.group(2)
+    if not end_raw or "今" in s:
+        return begin, ""
+    return begin, end_raw.replace("-", "")
+
+
+def bridge_stk_managers(df: pd.DataFrame, ts_code: str) -> pd.DataFrame:
+    """Eastmoney F10 CompanyManagement `gglb` → Tushare-ish stk_managers."""
+    if df is None or df.empty:
+        return bridge_stk_managers_stub(ts_code)
+    rows: list[dict] = []
+    for _, r in df.iterrows():
+        begin, end = _parse_incumbent_range(r.get("INCUMBENT_TIME") or r.get("rzsj"))
+        name = r.get("PERSON_NAME") or r.get("xm") or r.get("name")
+        if name is None or str(name).strip() in ("", "--", "nan"):
+            continue
+        lev = r.get("POSITION_TYPE_CODE")
+        rows.append(
+            {
+                "ts_code": ts_code,
+                "ann_date": "",
+                "name": str(name).strip(),
+                "gender": r.get("SEX") or r.get("xb") or "",
+                "lev": "" if lev is None or (isinstance(lev, float) and pd.isna(lev)) else str(lev),
+                "title": str(r.get("POSITION") or r.get("zw") or "").strip(),
+                "edu": str(r.get("HIGH_DEGREE") or r.get("xl") or "").strip(),
+                "national": "",
+                "birthday": "",
+                "begin_date": begin,
+                "end_date": end,
+            }
+        )
+    if not rows:
+        return bridge_stk_managers_stub(ts_code)
+    return pd.DataFrame(rows)
+
+
+def bridge_stk_rewards(df: pd.DataFrame, ts_code: str) -> pd.DataFrame:
+    """Eastmoney F10 `gglb` SALARY/HOLD_NUM → Tushare-ish stk_rewards (reward 元, hold_vol 股)."""
+    empty = pd.DataFrame(columns=["ts_code", "ann_date", "name", "title", "reward", "hold_vol"])
+    if df is None or df.empty:
+        return empty
+    rows: list[dict] = []
+    for _, r in df.iterrows():
+        name = r.get("PERSON_NAME") or r.get("xm") or r.get("name")
+        if name is None or str(name).strip() in ("", "--", "nan"):
+            continue
+        reward = pd.to_numeric(r.get("SALARY") if "SALARY" in r.index else r.get("xc"), errors="coerce")
+        hold = pd.to_numeric(r.get("HOLD_NUM") if "HOLD_NUM" in r.index else r.get("cgs"), errors="coerce")
+        if pd.isna(reward) and pd.isna(hold):
+            continue
+        rows.append(
+            {
+                "ts_code": ts_code,
+                "ann_date": "",
+                "name": str(name).strip(),
+                "title": str(r.get("POSITION") or r.get("zw") or "").strip(),
+                "reward": None if pd.isna(reward) else float(reward),
+                "hold_vol": None if pd.isna(hold) else float(hold),
+            }
+        )
+    if not rows:
+        return empty
+    return pd.DataFrame(rows)
+
+
+def bridge_top_inst_jgmmtj(df: pd.DataFrame, ts_code: str) -> pd.DataFrame:
+    """akshare stock_lhb_jgmmtj_em rows for one stock → top_inst (aggregate 机构席位)."""
+    empty = pd.DataFrame(columns=["ts_code", "trade_date", "exalter", "buy", "sell", "net_buy"])
+    if df is None or df.empty:
+        return empty
+    out = df.copy()
+    ren = {}
+    for c in out.columns:
+        s = str(c)
+        if s in ("上榜日期", "上榜日", "交易日", "trade_date"):
+            ren[c] = "trade_date"
+        elif s in ("机构买入总额", "买入额", "buy"):
+            ren[c] = "buy"
+        elif s in ("机构卖出总额", "卖出额", "sell"):
+            ren[c] = "sell"
+        elif s in ("机构买入净额", "机构净买额", "净买额", "net_buy"):
+            ren[c] = "net_buy"
+    out = out.rename(columns=ren)
+    if "trade_date" not in out.columns:
+        return empty
+    out["trade_date"] = _ymd(out["trade_date"])
+    out["ts_code"] = ts_code
+    out["exalter"] = "机构专用"
+    for col in ("buy", "sell", "net_buy"):
+        if col not in out.columns:
+            out[col] = None
+        else:
+            out[col] = pd.to_numeric(out[col], errors="coerce")
+    # If net missing but buy/sell present, derive
+    mask = out["net_buy"].isna() & out["buy"].notna() & out["sell"].notna()
+    out.loc[mask, "net_buy"] = out.loc[mask, "buy"] - out.loc[mask, "sell"]
+    return out[["ts_code", "trade_date", "exalter", "buy", "sell", "net_buy"]].dropna(subset=["trade_date"]).reset_index(drop=True)
+
+
+def bridge_top_inst_seats(df: pd.DataFrame, ts_code: str, trade_date: str) -> pd.DataFrame:
+    """LHB stock-detail seats whose name contains 机构 → top_inst rows."""
+    empty = pd.DataFrame(columns=["ts_code", "trade_date", "exalter", "buy", "sell", "net_buy"])
+    if df is None or df.empty:
+        return empty
+    out = df.copy()
+    name_col = next((c for c in out.columns if "营业部" in str(c) or str(c) in ("exalter", "席位")), None)
+    if name_col is None:
+        return empty
+    inst = out[out[name_col].astype(str).str.contains("机构", na=False)].copy()
+    if inst.empty:
+        return empty
+    buy_col = next((c for c in inst.columns if str(c) in ("买入金额", "buy") or str(c).startswith("买入金额")), None)
+    sell_col = next((c for c in inst.columns if str(c) in ("卖出金额", "sell") or str(c).startswith("卖出金额")), None)
+    net_col = next((c for c in inst.columns if str(c) in ("净额", "net_buy", "净买额")), None)
+    rows = []
+    for _, r in inst.iterrows():
+        buy = pd.to_numeric(r.get(buy_col), errors="coerce") if buy_col else None
+        sell = pd.to_numeric(r.get(sell_col), errors="coerce") if sell_col else None
+        net = pd.to_numeric(r.get(net_col), errors="coerce") if net_col else None
+        if pd.isna(net) and pd.notna(buy) and pd.notna(sell):
+            net = float(buy) - float(sell)
+        rows.append(
+            {
+                "ts_code": ts_code,
+                "trade_date": trade_date,
+                "exalter": str(r.get(name_col)),
+                "buy": None if buy is None or pd.isna(buy) else float(buy),
+                "sell": None if sell is None or pd.isna(sell) else float(sell),
+                "net_buy": None if net is None or pd.isna(net) else float(net),
+            }
+        )
+    return pd.DataFrame(rows) if rows else empty
 
 
 def bridge_repurchase(df: pd.DataFrame, ts_code: str) -> pd.DataFrame:

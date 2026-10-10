@@ -6,7 +6,7 @@ from typing import Callable
 
 import pandas as pd
 
-from ..codes import normalize_a_code, to_symbol6
+from ..codes import normalize_a_code, to_em_secid, to_symbol6
 from ..schema_bridge import (
     bridge_block_trade,
     bridge_dividend,
@@ -18,9 +18,10 @@ from ..schema_bridge import (
     bridge_pledge,
     bridge_repurchase,
     bridge_share_float,
-    bridge_stk_managers_stub,
+    bridge_stk_managers,
+    bridge_stk_rewards,
 )
-from .base import ClusterResult, Provenance, SourceStatus, deferred, empty_genuine, failed, ok
+from .base import ClusterResult, Provenance, SourceStatus, empty_genuine, failed, ok
 
 
 def _ak():
@@ -122,31 +123,109 @@ def fetch_pledge_detail(ts_code: str) -> ClusterResult:
 
 # ---- C10 managers / rewards ----
 
-def fetch_stk_managers(ts_code: str) -> ClusterResult:
-    """No stable per-stock free managers API in akshare; honest deferred → Phase 2 PDF."""
+_EM_MGMT_URL = "https://emweb.securities.eastmoney.com/PC_HSF10/CompanyManagement/PageAjax"
+_EM_MGMT_CACHE: dict[str, pd.DataFrame] = {}
+
+
+def _fetch_em_company_management(ts_code: str) -> pd.DataFrame:
+    """Eastmoney F10 公司高管列表 (`gglb`). Stable per-stock JSON; no Tushare."""
+    import requests
+
     code = normalize_a_code(ts_code)
-    return ClusterResult(
-        name="stk_managers",
-        df=bridge_stk_managers_stub(code),
-        provenance=Provenance(
-            cluster="stk_managers",
-            primary="none",
-            status=SourceStatus.DEFERRED,
-            rows=0,
-            note="P3 gap: no per-stock free 董监高名单 API; use 年报「董监高」PDF (Phase 2). "
-            "Do not invent managers from silence.",
-        ),
+    if code in _EM_MGMT_CACHE:
+        return _EM_MGMT_CACHE[code].copy()
+    em = to_em_secid(code)
+    r = requests.get(
+        _EM_MGMT_URL,
+        params={"code": em},
+        timeout=30,
+        headers={
+            "User-Agent": "Mozilla/5.0 (compatible; claude-company-analysis; research)",
+            "Referer": (
+                "https://emweb.securities.eastmoney.com/PC_HSF10/"
+                f"CompanyManagement/Index?type=web&code={em}"
+            ),
+        },
     )
+    r.raise_for_status()
+    data = r.json()
+    rows = data.get("gglb") if isinstance(data, dict) else None
+    df = pd.DataFrame(rows) if rows else pd.DataFrame()
+    _EM_MGMT_CACHE[code] = df
+    return df.copy()
+
+
+def fetch_stk_managers(ts_code: str) -> ClusterResult:
+    """董监高名单 — Eastmoney F10 CompanyManagement/PageAjax (per-stock)."""
+    cluster, primary = "stk_managers", "eastmoney_f10_company_management"
+    code = normalize_a_code(ts_code)
+    try:
+        raw = _fetch_em_company_management(code)
+        if raw is None or raw.empty:
+            return empty_genuine(
+                cluster,
+                primary,
+                "F10 returned 0 manager rows — cross-check 年报「董监高」before writing「无高管」",
+            )
+        df = bridge_stk_managers(raw, code)
+        if df.empty:
+            return empty_genuine(cluster, primary, "bridge produced zero manager rows")
+        return ok(
+            cluster,
+            df,
+            primary,
+            note="EM F10 gglb roster; resume/salary completeness varies — 年报 PDF still authoritative",
+        )
+    except Exception as e:  # noqa: BLE001
+        return failed(cluster, primary, e)
 
 
 def fetch_stk_rewards(ts_code: str) -> ClusterResult:
-    r = deferred(
-        "stk_rewards",
-        "P3 gap: structured 薪酬 often missing on free sources; Phase 2 PDF 董监高薪酬. "
-        "Do not treat empty as「无薪酬披露」.",
-    )
-    r.df = pd.DataFrame(columns=["ts_code", "name", "title", "reward", "hold_vol"])
-    return r
+    """管理层薪酬/持股 — same F10 gglb SALARY/HOLD_NUM (元 / 股)."""
+    cluster, primary = "stk_rewards", "eastmoney_f10_company_management"
+    code = normalize_a_code(ts_code)
+    try:
+        raw = _fetch_em_company_management(code)
+        if raw is None or raw.empty:
+            return empty_genuine(
+                cluster,
+                primary,
+                "F10 returned 0 rows — not the same as「无薪酬披露」; use 年报 PDF",
+            )
+        df = bridge_stk_rewards(raw, code)
+        if df.empty:
+            # Roster exists but every SALARY/HOLD_NUM null — common for some SOEs mid-year.
+            return ClusterResult(
+                name=cluster,
+                df=df,
+                provenance=Provenance(
+                    cluster=cluster,
+                    primary=primary,
+                    used=primary,
+                    status=SourceStatus.PARTIAL,
+                    rows=0,
+                    note="F10 roster present but SALARY/HOLD_NUM all null — Phase 2 年报「董监高薪酬」; "
+                    "do not write「无薪酬披露」",
+                ),
+            )
+        n_reward = int(df["reward"].notna().sum()) if "reward" in df.columns else 0
+        n_hold = int(df["hold_vol"].notna().sum()) if "hold_vol" in df.columns else 0
+        status = SourceStatus.OK if n_reward > 0 else SourceStatus.PARTIAL
+        return ClusterResult(
+            name=cluster,
+            df=df,
+            provenance=Provenance(
+                cluster=cluster,
+                primary=primary,
+                used=primary,
+                status=status,
+                rows=len(df),
+                note=f"reward_rows={n_reward}; hold_rows={n_hold}; units: reward≈元, hold_vol≈股",
+            ),
+        )
+    except Exception as e:  # noqa: BLE001
+        return failed(cluster, primary, e)
+
 
 # ---- C11 repurchase ----
 
