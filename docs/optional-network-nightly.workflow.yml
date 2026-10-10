@@ -1,10 +1,14 @@
 # Optional live free-source smoke (akshare / sina / cninfo).
 # Not required for merge: default CI is tests.yml (offline unit tests).
-# Enable on a schedule or run manually via workflow_dispatch.
+# Intended Actions path: .github/workflows/network-nightly.yml
+# (kept under docs/ until a credential with `workflow` scope can push the Actions path).
 #
 # Failures here are often upstream flakiness / rate limits — treat as signal,
 # not a hard release gate. Local equivalent:
-#   CA_NETWORK_TESTS=1 python -m unittest scripts.tests.test_a_share_p0 scripts.tests.test_a_share_p1
+#   CA_NETWORK_TESTS=1 python -m unittest \
+#     scripts.tests.test_a_share_p0.TestNetworkSmoke \
+#     scripts.tests.test_a_share_p1.TestNetworkP1Smoke \
+#     scripts.tests.test_daily_fallback.TestSinaDailyLive -v
 
 name: network-nightly
 
@@ -46,6 +50,7 @@ jobs:
           python -m unittest \
             scripts.tests.test_a_share_p0.TestNetworkSmoke \
             scripts.tests.test_a_share_p1.TestNetworkP1Smoke \
+            scripts.tests.test_daily_fallback.TestSinaDailyLive \
             -v 2>&1 | tee network-output.txt || code=$?
           {
             echo "### Network nightly smoke"
