@@ -4,6 +4,14 @@
 
 ---
 
+## [Unreleased]
+
+**Fixed**
+
+- `test_daily_fallback.TestSinaDailyLive.test_bj_code_schema`：`get_daily_history_legacy` 形参是 `datalen`，误传 `years=` 导致 `CA_NETWORK_TESTS=1` 烟测 TypeError
+
+---
+
 ## [v8.10-p3] — 2026-10-09 — Compare / Review 强化 / 硬化
 
 **Changed**

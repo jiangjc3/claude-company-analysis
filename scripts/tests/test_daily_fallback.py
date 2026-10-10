@@ -21,7 +21,8 @@ RUN_NETWORK = os.environ.get("CA_NETWORK_TESTS") == "1"
 @unittest.skipUnless(RUN_NETWORK, "set CA_NETWORK_TESTS=1 to hit sina kline")
 class TestSinaDailyLive(unittest.TestCase):
     def test_bj_code_schema(self):
-        df = get_daily_history_legacy("920522.BJ", years=1)
+        # API takes datalen (trading days), not years — ~250 ≈ 1 calendar year.
+        df = get_daily_history_legacy("920522.BJ", datalen=250)
         self.assertGreater(len(df), 0, "sina kline should return rows for BJ sample")
         expected = {
             "ts_code", "trade_date", "open", "high", "low", "close",
